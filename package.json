@@ -1,0 +1,31 @@
+{
+  "name": "wreckpark",
+  "version": "1.0.0",
+  "description": "WRECKPARK \u2014 souped-up cars, one giant skatepark. Smash Derby & Trick Battle.",
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently -n client,server -c cyan,magenta \"vite\" \"node server/server.js\"",
+    "build": "vite build",
+    "start": "vite build && node server/server.js",
+    "server": "node server/server.js",
+    "test": "npm run test:unit && npm run test:browser",
+    "test:unit": "node tools/charcheck.mjs && node tools/arenatest.mjs && node tools/simtest.mjs && node tools/tricktest.mjs",
+    "test:browser": "npm run build && node tools/browsertest.mjs && node tools/nettest.mjs && node tools/roundtest.mjs && node tools/replaytest.mjs",
+    "test:sim": "node tools/simtest.mjs",
+    "test:arena": "node tools/arenatest.mjs",
+    "test:tricks": "node tools/tricktest.mjs",
+    "spawns": "node tools/spawncheck.mjs",
+    "test:replay": "node tools/replaytest.mjs"
+  },
+  "dependencies": {
+    "@dimforge/rapier3d-compat": "^0.20.0",
+    "express": "^5.2.0",
+    "three": "^0.185.1",
+    "ws": "^8.19.0"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.4",
+    "playwright": "^1.62.1",
+    "vite": "^7.3.1"
+  }
+}

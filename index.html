@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+<title>WRECKPARK</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>&#128663;</text></svg>" />
+<link rel="stylesheet" href="/src/ui/styles.css" />
+</head>
+<body>
+
+<canvas id="view"></canvas>
+
+<!-- ══════════════════ BOOT ══════════════════ -->
+<div id="boot" class="screen active">
+  <div class="boot-inner">
+    <h1 class="logo">WRECK<span>PARK</span></h1>
+    <div class="boot-bar"><div id="boot-fill"></div></div>
+    <p id="boot-msg">warming up the engines…</p>
+  </div>
+</div>
+
+<!-- ══════════════════ MAIN MENU ══════════════════ -->
+<div id="menu" class="screen">
+  <div class="menu-grid">
+
+    <header class="menu-head">
+      <h1 class="logo sm">WRECK<span>PARK</span></h1>
+      <div class="tagline">the whole world is a skatepark. your car is the board.</div>
+    </header>
+
+    <section class="panel card-select">
+      <div class="panel-title">PICK YOUR WRECK</div>
+      <div id="car-list" class="car-list"></div>
+      <div id="car-stats" class="car-stats"></div>
+
+      <div class="panel-title mt">PERSONAL BEST</div>
+      <div id="best-run" class="best-run"></div>
+    </section>
+
+    <section class="panel play-panel">
+      <div class="panel-title">DRIVER</div>
+      <input id="name-input" class="text-input" maxlength="14" placeholder="your name" />
+
+      <div class="panel-title mt">GAME MODE</div>
+      <div class="mode-select">
+        <button class="mode-btn active" data-mode="derby">
+          <span class="mode-name">SMASH DERBY</span>
+          <span class="mode-desc">3 lives. Ram them to scrap. Last one rolling wins.</span>
+        </button>
+        <button class="mode-btn" data-mode="tricks">
+          <span class="mode-name">TRICK BATTLE</span>
+          <span class="mode-desc">Flips, rolls, spins. Biggest score wins — bump rivals to make them bail.</span>
+        </button>
+      </div>
+
+      <div class="panel-title mt">PLAY</div>
+      <div class="play-rows">
+        <button id="btn-solo" class="btn big"><span id="solo-label">FREE ROAM</span> <small id="solo-desc">practice alone</small></button>
+        <button id="btn-host" class="btn big primary">HOST GAME <small>get a code for your mates</small></button>
+        <div class="join-row">
+          <input id="join-code" class="text-input code" maxlength="4" placeholder="CODE" />
+          <button id="btn-join" class="btn">JOIN</button>
+        </div>
+      </div>
+      <div id="net-msg" class="net-msg"></div>
+    </section>
+
+    <footer class="menu-foot">
+      <button id="btn-garage" class="btn ghost">🔧 GARAGE</button>
+      <div class="scrap-display">SCRAP <b id="scrap-count">0</b></div>
+      <button id="btn-controls" class="btn ghost">⌨ CONTROLS</button>
+      <button id="btn-uisize" class="btn ghost">🔍 UI SIZE: 115%</button>
+      <button id="btn-quality" class="btn ghost">✨ QUALITY: HIGH</button>
+    </footer>
+  </div>
+</div>
+
+<!-- ══════════════════ GARAGE ══════════════════ -->
+<div id="garage" class="screen">
+  <div class="garage-grid">
+    <header class="garage-head">
+      <button id="garage-back" class="btn ghost">‹ BACK</button>
+      <h2>GARAGE</h2>
+      <div class="scrap-display">SCRAP <b id="garage-scrap">0</b></div>
+    </header>
+    <div class="garage-body">
+      <nav id="garage-tabs" class="garage-tabs"></nav>
+      <div id="garage-items" class="garage-items"></div>
+    </div>
+    <div class="garage-hint">Win rounds, wreck rivals and land tricks to earn <b>SCRAP</b>. Everything here is cosmetic — no pay-to-win between mates.</div>
+  </div>
+</div>
+
+<!-- ══════════════════ LOBBY ══════════════════ -->
+<div id="lobby" class="screen">
+  <div class="lobby-panel panel">
+    <div class="panel-title">LOBBY</div>
+    <div class="room-code-box">
+      ROOM CODE
+      <div id="room-code" class="room-code">----</div>
+      <div class="room-share">Send your mates this code — or the link below</div>
+      <div id="room-link" class="room-link"></div>
+      <button id="copy-link" class="btn ghost sm">COPY LINK</button>
+    </div>
+    <div class="panel-title mt">PLAYERS</div>
+    <div id="lobby-players" class="lobby-players"></div>
+    <div class="panel-title mt">MODE</div>
+    <div id="lobby-mode" class="lobby-mode"></div>
+    <div class="lobby-actions">
+      <button id="btn-ready" class="btn big primary">READY</button>
+      <button id="btn-leave" class="btn ghost">LEAVE</button>
+    </div>
+    <div id="lobby-msg" class="net-msg"></div>
+  </div>
+</div>
+
+<!-- ══════════════════ HUD ══════════════════ -->
+<div id="hud" class="hud">
+  <!-- top bar -->
+  <div class="hud-top">
+    <div id="hud-mode" class="hud-mode">SMASH DERBY</div>
+    <div id="hud-timer" class="hud-timer">3:00</div>
+    <div id="hud-lives" class="hud-lives"></div>
+  </div>
+
+  <!-- live scoreboard (right) -->
+  <div id="hud-scores" class="hud-scores"></div>
+
+  <!-- radar -->
+  <canvas id="radar" class="radar" width="180" height="180"></canvas>
+
+  <!-- bottom left: health + boost -->
+  <div class="hud-bottom-left">
+    <div class="gauge">
+      <div class="gauge-label">HULL</div>
+      <div class="bar health"><div id="health-fill"></div></div>
+    </div>
+    <div class="gauge">
+      <div class="gauge-label">BOOST</div>
+      <div class="bar boost"><div id="boost-fill"></div></div>
+    </div>
+    <div id="flip-pip" class="flip-pip">FLIP READY</div>
+  </div>
+
+  <!-- bottom right: speed -->
+  <div class="hud-bottom-right">
+    <div id="speed-val" class="speed-val">0</div>
+    <div class="speed-unit">KM/H</div>
+  </div>
+
+  <!-- centre: trick combo -->
+  <div id="combo" class="combo">
+    <div id="combo-list" class="combo-list"></div>
+    <div id="combo-score" class="combo-score"></div>
+  </div>
+
+  <!-- score popups -->
+  <div id="popups" class="popups"></div>
+
+  <!-- kill feed -->
+  <div id="feed" class="feed"></div>
+
+  <!-- big centre announcements -->
+  <div id="announce" class="announce"></div>
+</div>
+
+<!-- ══════════════════ CHAT ══════════════════ -->
+<div id="chat" class="chat">
+  <div id="chat-log" class="chat-log"></div>
+  <div id="chat-entry" class="chat-entry">
+    <span class="chat-prompt">SAY</span>
+    <input id="chat-input" maxlength="120" autocomplete="off" placeholder="press T to chat, ENTER to send" />
+  </div>
+</div>
+
+<!-- ══════════════════ REPLAY ══════════════════ -->
+<div id="replay-bar" class="replay-bar">
+  <div class="replay-head">
+    <div class="replay-tag">REPLAY</div>
+    <div id="replay-title" class="replay-title"></div>
+  </div>
+  <div class="replay-progress"><div id="replay-fill"></div></div>
+  <div class="replay-hint"><kbd>SPACE</kbd> restart &nbsp; <kbd>C</kbd> camera &nbsp; <kbd>ESC</kbd> exit</div>
+</div>
+
+<!-- ══════════════════ RESULTS ══════════════════ -->
+<div id="results" class="screen">
+  <div class="results-panel panel">
+    <div id="results-title" class="results-title">ROUND OVER</div>
+    <div id="results-board" class="results-board"></div>
+    <div id="results-rewards" class="results-rewards"></div>
+    <div class="results-actions">
+      <button id="results-replay" class="btn">WATCH REPLAY</button>
+      <button id="results-continue" class="btn big primary">CONTINUE</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════ PAUSE / CONTROLS ══════════════════ -->
+<div id="pause" class="screen">
+  <div class="panel pause-panel">
+    <div class="panel-title">CONTROLS</div>
+    <div class="controls-grid">
+      <div><kbd>W</kbd><kbd>S</kbd></div><div>Throttle / Brake &amp; reverse <em>— in the air: flip forwards / backwards</em></div>
+      <div><kbd>A</kbd><kbd>D</kbd></div><div>Steer <em>— in the air: barrel roll</em></div>
+      <div>&#8592;&#8593;&#8595;&#8594;</div><div>Drive <em>— in the air: gentle trim, for lining up a landing</em></div>
+      <div><kbd>Q</kbd><kbd>E</kbd></div><div>Spin left / right (air yaw)</div>
+      <div><kbd>SHIFT</kbd></div><div>BOOST <em>— hold with reverse to boost backwards</em></div>
+      <div><kbd>SPACE</kbd></div><div>Jump <em>— in the air: flip-dash (one per jump)</em></div>
+      <div><kbd>OPT</kbd><kbd>CTRL</kbd><kbd>X</kbd></div><div>Handbrake — hold it into a corner for big slides <em>(not CMD: the browser would close the tab)</em></div>
+      <div><kbd>R</kbd></div><div>Flip car back over / respawn</div>
+      <div><kbd>C</kbd></div><div>Change camera</div>
+      <div><kbd>TAB</kbd></div><div>Scoreboard</div>
+      <div><kbd>ESC</kbd></div><div>This menu</div>
+      <div><kbd>T</kbd></div><div>Chat with the room</div>
+    </div>
+    <div class="pause-actions">
+      <button id="pause-resume" class="btn big primary">RESUME</button>
+      <button id="pause-quit" class="btn ghost">QUIT TO MENU</button>
+    </div>
+  </div>
+</div>
+
+<script type="module" src="/src/main.js"></script>
+</body>
+</html>
