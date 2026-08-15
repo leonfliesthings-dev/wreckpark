@@ -137,6 +137,35 @@ multiplier, and landing again quickly keeps the chain alive.
 **Trick Battle also works on your own.** Pick TRICK BATTLE and hit **SOLO TRICK
 RUN** — a timed three-minute run against nobody but your own best score.
 
+### SINGLE PLAYER vs BOTS
+
+Pick SMASH DERBY, set **BOTS** to 1/3/5/7 and difficulty to easy/normal/hard,
+then hit **BATTLE**. The bots drive the same cars with the same physics and the
+same weapons you have — they chase, ram, shoot, drop countermeasures, try to
+land on their wheels, and get themselves unstuck. Set BOTS to OFF for plain
+free roam.
+
+---
+
+## Weapons
+
+Every car carries one offensive and one defensive system, fixed to the car —
+part of what makes each one feel different.
+
+| Car | Weapon (`F`) | Countermeasure (`G`) |
+|---|---|---|
+| **RIPSAW** | **Rockets** — flat, fast, splash | **Oil slick** — anyone through it loses all grip |
+| **HORNET** | **Gatling** — hoses rounds, chews armour close up | **Caltrops** — spikes that shred whatever follows |
+| **MAULER** | **Mortar** — lobs over cover, enormous bang | **Wrecking ball** — chained ball you swing into people |
+| **VOLT** | **Laser** — instant beam, drains fast | **Deflector** — refracting field, bounces damage for a few seconds |
+
+Ammo reloads automatically when you run dry; countermeasures recharge one
+charge at a time. The HUD shows both bottom-left.
+
+Damage authority works the same as ramming: the shooter broadcasts *that it
+fired*, everyone simulates the shot, and each machine decides only whether it
+was hit. Nobody can assert damage onto anyone else's car.
+
 ---
 
 ## Personal bests and replays
@@ -246,6 +275,7 @@ npm run test:unit  # headless physics, no browser (fast)
 | `nettest` | Two real browsers in one room, replicating each other's driving |
 | `roundtest` | A full round through to results and the scrap payout |
 | `replaytest` | Solo trick run, personal best, and replaying it back |
+| `battletest` | Bots spawn and fight, weapons fire and reload, countermeasures deploy, damage lands |
 
 The physics tests run headless in Node against the same code the browser uses,
 which is why the tuning numbers in `carTypes.js` can be trusted.

@@ -613,3 +613,50 @@ kbd {
 }
 .room-reach.ok { color: var(--green); }
 .room-reach.warn { color: var(--yellow); }
+
+/* ═══════════════════════════ WEAPONS ═══════════════════════════ */
+.arms { display: grid; gap: calc(6px * var(--u)); margin-top: calc(10px * var(--u)); }
+.arm {
+  display: grid;
+  grid-template-columns: calc(26px * var(--u)) 1fr auto;
+  align-items: center; gap: calc(9px * var(--u));
+  background: rgba(7,8,11,.6);
+  border: calc(1px * var(--u)) solid var(--line);
+  border-radius: calc(7px * var(--u));
+  padding: calc(6px * var(--u)) calc(9px * var(--u));
+  backdrop-filter: blur(8px);
+  transition: border-color .15s, opacity .15s;
+}
+.arm.empty { opacity: .42; }
+.arm.ready { border-color: var(--line-hot); }
+.arm-key {
+  font-size: calc(11px * var(--u)); font-weight: 900; text-align: center;
+  color: var(--ink-dim);
+  border: calc(1px * var(--u)) solid var(--line);
+  border-radius: calc(4px * var(--u));
+  padding: calc(2px * var(--u)) 0;
+}
+.arm-body { min-width: 0; }
+.arm-name {
+  font-size: calc(10px * var(--u)); font-weight: 900; letter-spacing: .14em;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.arm-bar {
+  height: calc(4px * var(--u)); margin-top: calc(4px * var(--u));
+  background: rgba(255,255,255,.1); border-radius: 99px; overflow: hidden;
+}
+#weapon-fill { height: 100%; width: 100%; background: var(--orange); transition: width .1s linear; }
+#weapon-fill.reloading { background: var(--cyan); }
+.arm-count {
+  font-size: calc(15px * var(--u)); font-weight: 900; color: var(--yellow);
+  font-variant-numeric: tabular-nums;
+}
+.arm-pips { display: flex; gap: calc(3px * var(--u)); margin-top: calc(5px * var(--u)); }
+.arm-pip {
+  width: calc(13px * var(--u)); height: calc(5px * var(--u));
+  border-radius: calc(2px * var(--u)); background: var(--green);
+}
+.arm-pip.spent { background: rgba(255,255,255,.14); }
+
+.bot-row { display: grid; grid-template-columns: 1fr 1fr; gap: calc(8px * var(--u)); }
+.bot-row.hidden { display: none; }

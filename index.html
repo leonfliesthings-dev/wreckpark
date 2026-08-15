@@ -57,6 +57,10 @@
       <div class="panel-title mt">PLAY</div>
       <div class="play-rows">
         <button id="btn-solo" class="btn big"><span id="solo-label">FREE ROAM</span> <small id="solo-desc">practice alone</small></button>
+        <div class="bot-row" id="bot-row">
+          <button id="btn-bots" class="btn sm">BOTS: 3</button>
+          <button id="btn-botdiff" class="btn sm">NORMAL</button>
+        </div>
         <button id="btn-host" class="btn big primary">HOST GAME <small>get a code for your mates</small></button>
         <div class="join-row">
           <input id="join-code" class="text-input code" maxlength="4" placeholder="CODE" />
@@ -142,6 +146,24 @@
       <div class="bar boost"><div id="boost-fill"></div></div>
     </div>
     <div id="flip-pip" class="flip-pip">FLIP READY</div>
+
+    <div class="arms">
+      <div class="arm" id="arm-weapon">
+        <div class="arm-key">F</div>
+        <div class="arm-body">
+          <div class="arm-name" id="weapon-name">ROCKETS</div>
+          <div class="arm-bar"><div id="weapon-fill"></div></div>
+        </div>
+        <div class="arm-count" id="weapon-ammo">10</div>
+      </div>
+      <div class="arm" id="arm-counter">
+        <div class="arm-key">G</div>
+        <div class="arm-body">
+          <div class="arm-name" id="counter-name">OIL SLICK</div>
+          <div class="arm-pips" id="counter-pips"></div>
+        </div>
+      </div>
+    </div>
   </div>
 
   <!-- bottom right: speed -->

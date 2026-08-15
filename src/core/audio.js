@@ -277,6 +277,58 @@ export const Audio = {
     o.start(t); o.stop(t + 0.5);
   },
 
+  /** Distinct report per weapon, still fully synthesised. */
+  weaponFire(id) {
+    if (!ready || muted) return;
+    const t = ctx.currentTime;
+    if (id === 'gatling') {
+      const n = noiseSource(false);
+      const f = ctx.createBiquadFilter();
+      f.type = 'bandpass'; f.frequency.value = 1600; f.Q.value = 1.2;
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(0.12, t + 0.003);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.06);
+      n.connect(f).connect(g).connect(master);
+      n.start(t); n.stop(t + 0.08);
+    } else if (id === 'laser') {
+      const o = ctx.createOscillator();
+      o.type = 'sawtooth';
+      o.frequency.setValueAtTime(1400, t);
+      o.frequency.exponentialRampToValueAtTime(420, t + 0.14);
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(0.1, t + 0.005);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.16);
+      o.connect(g).connect(master);
+      o.start(t); o.stop(t + 0.2);
+    } else {
+      // rockets and mortar: a whoosh with a thump underneath
+      const n = noiseSource(false);
+      const f = ctx.createBiquadFilter();
+      f.type = 'bandpass';
+      f.frequency.setValueAtTime(400, t);
+      f.frequency.exponentialRampToValueAtTime(2200, t + 0.22);
+      f.Q.value = 0.8;
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(0.26, t + 0.01);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.3);
+      n.connect(f).connect(g).connect(master);
+      n.start(t); n.stop(t + 0.35);
+      const o = ctx.createOscillator();
+      o.type = 'sine';
+      o.frequency.setValueAtTime(120, t);
+      o.frequency.exponentialRampToValueAtTime(45, t + 0.18);
+      const og = ctx.createGain();
+      og.gain.setValueAtTime(0.0001, t);
+      og.gain.exponentialRampToValueAtTime(0.3, t + 0.008);
+      og.gain.exponentialRampToValueAtTime(0.0001, t + 0.25);
+      o.connect(og).connect(master);
+      o.start(t); o.stop(t + 0.3);
+    }
+  },
+
   beep(high = false) {
     if (!ready || muted) return;
     const t = ctx.currentTime;

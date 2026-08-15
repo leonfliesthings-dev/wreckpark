@@ -449,6 +449,22 @@ wss.on('connection', (ws) => {
         break;
       }
 
+      // Weapon events are relayed verbatim. Each client simulates the shot and
+      // decides only whether IT was hit, so the server has nothing to arbitrate.
+      case C2S.FIRE:
+        if (room.phase !== PHASE.LIVE) break;
+        broadcast(room, S2C.FIRE, {
+          id: player.id, w: msg.w, o: msg.o, d: msg.d,
+        }, player.id);
+        break;
+
+      case C2S.DEPLOY:
+        if (room.phase !== PHASE.LIVE) break;
+        broadcast(room, S2C.DEPLOY, {
+          id: player.id, c: msg.c, p: msg.p,
+        }, player.id);
+        break;
+
       case C2S.PING:
         send(ws, S2C.PONG, { c: msg.c });
         break;

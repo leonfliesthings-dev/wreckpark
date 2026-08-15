@@ -20,6 +20,8 @@ export const C2S = {
   RESPAWN: 'respawn',
   CHAT: 'chat',
   PING: 'ping',
+  FIRE: 'fire',       // weapon discharged
+  DEPLOY: 'deploy',   // countermeasure dropped
 };
 
 // ── server -> client ──
@@ -34,6 +36,8 @@ export const S2C = {
   CHAT: 'chat',
   ERROR: 'error',
   PONG: 'pong',
+  FIRE: 'fire',
+  DEPLOY: 'deploy',
 };
 
 export const PHASE = {

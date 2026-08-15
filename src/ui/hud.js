@@ -26,6 +26,13 @@ export class HUD {
       feed: $('feed'),
       announce: $('announce'),
       radar: $('radar'),
+      armWeapon: $('arm-weapon'),
+      armCounter: $('arm-counter'),
+      weaponName: $('weapon-name'),
+      weaponFill: $('weapon-fill'),
+      weaponAmmo: $('weapon-ammo'),
+      counterName: $('counter-name'),
+      counterPips: $('counter-pips'),
     };
     this.radarCtx = this.el.radar.getContext('2d');
     this._lastSpeed = -1;
@@ -66,6 +73,28 @@ export class HUD {
   setBoost(pct) { this.el.boost.style.width = `${Math.max(0, pct)}%`; }
 
   setFlipReady(v) { this.el.flip.classList.toggle('ready', !!v); }
+
+  /** @param {Armoury} a */
+  setArms(a) {
+    if (!a) return;
+    this.el.weaponName.textContent = a.w.name;
+    this.el.weaponAmmo.textContent = a.reloading ? '--' : a.ammo;
+    this.el.weaponFill.style.width = `${(a.reloading ? a.reloadFrac : a.ammoFrac) * 100}%`;
+    this.el.weaponFill.classList.toggle('reloading', a.reloading);
+    this.el.armWeapon.classList.toggle('empty', a.reloading);
+    this.el.armWeapon.classList.toggle('ready', a.canFire());
+
+    this.el.counterName.textContent = a.c.name;
+    const total = a.c.charges;
+    if (this._pipCount !== total) {
+      this._pipCount = total;
+      this.el.counterPips.innerHTML = Array.from({ length: total },
+        () => '<div class="arm-pip"></div>').join('');
+    }
+    const pips = this.el.counterPips.children;
+    for (let i = 0; i < pips.length; i++) pips[i].classList.toggle('spent', i >= a.charges);
+    this.el.armCounter.classList.toggle('empty', a.charges === 0);
+  }
 
   setSpeed(kmh) {
     const v = Math.max(0, Math.round(kmh));

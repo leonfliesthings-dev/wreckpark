@@ -20,6 +20,8 @@ function blank() {
     stats: { rounds: 0, wins: 0, wrecks: 0, bestTrick: 0 },
     quality: 'high',
     uiScale: 1.0,   // multiplier on top of the automatic screen-size fit
+    botCount: 3,
+    botDifficulty: 'normal',
   };
 }
 
@@ -55,6 +57,7 @@ export const Profile = {
   setCar(id) { profile.car = id; save(); },
   setQuality(q) { profile.quality = q; save(); },
   setUiScale(v) { profile.uiScale = v; save(); },
+  setBots(count, difficulty) { profile.botCount = count; profile.botDifficulty = difficulty; save(); },
 
   addScrap(n) {
     profile.scrap += n;

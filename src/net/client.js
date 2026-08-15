@@ -4,6 +4,9 @@
  */
 import { C2S, S2C, PHASE, SNAPSHOT_HZ, packState, normalizeCode } from './protocol.js';
 
+const r2 = (v) => Math.round(v * 100) / 100;
+const r3 = (v) => Math.round(v * 1000) / 1000;
+
 /** Render remote cars this far in the past, so there is always a pair to lerp between. */
 const INTERP_DELAY = 0.11;
 const BUFFER_KEEP = 1.2;
@@ -176,6 +179,14 @@ export class NetClient {
         this.emit('error', msg.msg);
         break;
 
+      case S2C.FIRE:
+        this.emit('fire', msg);
+        break;
+
+      case S2C.DEPLOY:
+        this.emit('deploy', msg);
+        break;
+
       case S2C.PONG:
         this.ping = Math.round(performance.now() - msg.c);
         setTimeout(() => {
@@ -203,6 +214,18 @@ export class NetClient {
   reportTrick(points, label) { this._send({ t: C2S.TRICK, points, label }); }
   reportRespawn() { this._send({ t: C2S.RESPAWN }); }
   chat(text) { this._send({ t: C2S.CHAT, text }); }
+
+  reportFire(weaponId, origin, dir) {
+    this._send({
+      t: C2S.FIRE, w: weaponId,
+      o: [r2(origin.x), r2(origin.y), r2(origin.z)],
+      d: [r3(dir.x), r3(dir.y), r3(dir.z)],
+    });
+  }
+
+  reportDeploy(counterId, pos) {
+    this._send({ t: C2S.DEPLOY, c: counterId, p: [r2(pos.x), r2(pos.y), r2(pos.z)] });
+  }
 
   // ── interpolation ────────────────────────────────────────────
   /**

@@ -10,7 +10,7 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
-import { getItem } from './cosmetics.js';
+import { getItem, DEFAULT_LOADOUT } from './cosmetics.js';
 
 const _c = new THREE.Color();
 
@@ -314,6 +314,8 @@ function buildWheel(radius, width, wheelItem) {
  * @param {number} teamColor overrides paint in multiplayer so players are told apart
  */
 export function buildCar(type, loadout, teamColor = null) {
+  // Bots and previews pass nothing; fall back to the stock kit.
+  loadout = { ...DEFAULT_LOADOUT, ...(loadout || {}) };
   const bd = type.body;
   const group = new THREE.Group();
 

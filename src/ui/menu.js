@@ -19,6 +19,8 @@ export class Menu {
     this.selectedCar = Profile.get().car || 'ripsaw';
     this.mode = 'derby';
     this.current = 'boot';
+    this.botCount = Profile.get().botCount ?? 3;
+    this.botDifficulty = Profile.get().botDifficulty || 'normal';
 
     this._buildCarList();
     this._wire();
@@ -108,6 +110,23 @@ export class Menu {
     $('garage-back').addEventListener('click', () => { Audio.ui('click'); this.show('menu'); });
     $('btn-controls').addEventListener('click', () => { Audio.ui('click'); this.show('pause'); this.pauseFromMenu = true; });
     $('btn-quality').addEventListener('click', () => { Audio.ui('click'); this.on.quality?.(); });
+
+    const BOT_COUNTS = [0, 1, 3, 5, 7];
+    $('btn-bots').addEventListener('click', () => {
+      Audio.ui('click');
+      const i = BOT_COUNTS.indexOf(this.botCount);
+      this.botCount = BOT_COUNTS[(i + 1) % BOT_COUNTS.length];
+      Profile.setBots(this.botCount, this.botDifficulty);
+      this.setMode(this.mode);
+    });
+    const DIFFS = ['easy', 'normal', 'hard'];
+    $('btn-botdiff').addEventListener('click', () => {
+      Audio.ui('click');
+      const i = DIFFS.indexOf(this.botDifficulty);
+      this.botDifficulty = DIFFS[(i + 1) % DIFFS.length];
+      Profile.setBots(this.botCount, this.botDifficulty);
+      this.setMode(this.mode);
+    });
     $('btn-uisize').addEventListener('click', () => { Audio.ui('click'); this.on.uiSize?.(); });
 
     $('btn-ready').addEventListener('click', () => { Audio.ui('click'); this.on.ready?.(); });
@@ -147,10 +166,19 @@ export class Menu {
     if (mode === 'tricks') {
       $('solo-label').textContent = 'SOLO TRICK RUN';
       $('solo-desc').textContent = '3 minutes alone - beat your best score';
+      $('bot-row').classList.add('hidden');
+    } else if (this.botCount > 0) {
+      $('solo-label').textContent = `BATTLE ${this.botCount} BOT${this.botCount > 1 ? 'S' : ''}`;
+      $('solo-desc').textContent = 'single player smash derby';
+      $('bot-row').classList.remove('hidden');
     } else {
       $('solo-label').textContent = 'FREE ROAM';
       $('solo-desc').textContent = 'practice alone, no timer';
+      $('bot-row').classList.remove('hidden');
     }
+    $('btn-bots').textContent = this.botCount === 0 ? 'BOTS: OFF' : `BOTS: ${this.botCount}`;
+    $('btn-botdiff').textContent = this.botDifficulty.toUpperCase();
+    $('btn-botdiff').disabled = this.botCount === 0;
     this.refreshBestRun();
   }
 

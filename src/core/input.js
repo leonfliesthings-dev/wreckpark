@@ -13,7 +13,7 @@ const SWALLOW = new Set([
   'Space', 'Tab', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight',
   'KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE', 'KeyR', 'KeyC', 'KeyT',
   'ShiftLeft', 'ShiftRight', 'ControlLeft', 'ControlRight',
-  'AltLeft', 'AltRight', 'KeyX',
+  'AltLeft', 'AltRight', 'KeyX', 'KeyF', 'KeyG',
 ]);
 
 window.addEventListener('keydown', (e) => {
@@ -84,6 +84,9 @@ export const Input = {
       jump:     PRESSED.has('Space'),
       dash:     PRESSED.has('Space'),
       jumpHeld: HELD.has('Space'),
+      fire:     HELD.has('KeyF'),
+      firePress:PRESSED.has('KeyF'),
+      deploy:   PRESSED.has('KeyG'),
       reset:    PRESSED.has('KeyR'),
       camera:   PRESSED.has('KeyC'),
       scores:   HELD.has('Tab'),
@@ -95,4 +98,5 @@ export const NEUTRAL_INTENT = {
   throttle: 0, steer: 0, yaw: 0,
   airPitch: 0, airRoll: 0, trimPitch: 0, trimRoll: 0, boost: false, handbrake: false,
   dash: false, jump: false, jumpHeld: false, reset: false, camera: false, scores: false,
+  fire: false, firePress: false, deploy: false,
 };

@@ -10,13 +10,14 @@
     "server": "node server/server.js",
     "test": "npm run test:unit && npm run test:browser",
     "test:unit": "node tools/charcheck.mjs && node tools/arenatest.mjs && node tools/simtest.mjs && node tools/tricktest.mjs",
-    "test:browser": "npm run build && node tools/browsertest.mjs && node tools/nettest.mjs && node tools/roundtest.mjs && node tools/replaytest.mjs",
+    "test:browser": "npm run build && node tools/browsertest.mjs && node tools/nettest.mjs && node tools/roundtest.mjs && node tools/replaytest.mjs && node tools/battletest.mjs",
     "test:sim": "node tools/simtest.mjs",
     "test:arena": "node tools/arenatest.mjs",
     "test:tricks": "node tools/tricktest.mjs",
     "spawns": "node tools/spawncheck.mjs",
     "test:replay": "node tools/replaytest.mjs",
-    "share": "node tools/share.mjs"
+    "share": "node tools/share.mjs",
+    "test:battle": "node tools/battletest.mjs"
   },
   "dependencies": {
     "@dimforge/rapier3d-compat": "^0.20.0",

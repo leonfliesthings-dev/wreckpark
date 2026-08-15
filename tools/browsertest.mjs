@@ -104,7 +104,18 @@ await page.waitForTimeout(300);
 // ── free roam ──
 console.log('\n── driving ──');
 
+// These tests are about driving mechanics, so turn the bots off and use plain
+// free roam - no countdown, no opponents shooting at us mid-measurement.
+const botsOff = async () => {
+  for (let i = 0; i < 6; i++) {
+    const label = await page.textContent('#btn-bots');
+    if (/OFF/.test(label || '')) return;
+    await page.click('#btn-bots');
+    await page.waitForTimeout(120);
+  }
+};
 const startSolo = async () => {
+  await botsOff();
   await page.click('#btn-solo');
   await page.waitForTimeout(2200);
 };

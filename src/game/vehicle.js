@@ -139,6 +139,7 @@ export class Vehicle {
     this.boostDir = 1;          // -1 when boosting in reverse
     this.overdrive = 0;        // seconds of doubled ram damage remaining
 
+    this.slick = 0;              // seconds of no-grip left after hitting oil
     this.cleanLanding = false;   // wheels-down and upright: impacts are forgiven
     this.restTime = 0;
     this.beached = false;      // stopped on its roof / wedged: no wheels, but not flying
@@ -330,12 +331,17 @@ export class Vehicle {
     vc.setWheelBrake(WHEEL_RL, handbrake ? ph.brakeForce * 2.2 : brake);
     vc.setWheelBrake(WHEEL_RR, handbrake ? ph.brakeForce * 2.2 : brake);
 
+    // oil: everything lets go for a moment
+    this.slick = Math.max(0, this.slick - dt);
+    const slickMul = this.slick > 0 ? 0.12 : 1;
+    for (let i = 0; i < 4; i++) vc.setWheelFrictionSlip(i, ph.frictionSlip * slickMul);
+
     // drifting: let the back end go
-    const rearGrip = handbrake ? ph.sideFriction * 0.12 : ph.sideFriction;
+    const rearGrip = (handbrake ? ph.sideFriction * 0.12 : ph.sideFriction) * slickMul;
     vc.setWheelSideFrictionStiffness(WHEEL_RL, rearGrip);
     vc.setWheelSideFrictionStiffness(WHEEL_RR, rearGrip);
     // a touch more front bite so it turns in hard
-    const frontGrip = handbrake ? ph.sideFriction * 1.25 : ph.sideFriction;
+    const frontGrip = (handbrake ? ph.sideFriction * 1.25 : ph.sideFriction) * slickMul;
     vc.setWheelSideFrictionStiffness(WHEEL_FL, frontGrip);
     vc.setWheelSideFrictionStiffness(WHEEL_FR, frontGrip);
 

@@ -18,6 +18,8 @@ import { ChaseCamera } from './game/camera.js';
 import { Pickups } from './game/pickups.js';
 import { RemotePlayer } from './game/remotePlayer.js';
 import { ReplayRecorder, ReplayPlayer } from './game/replay.js';
+import { WeaponSystem, Armoury, WEAPONS, COUNTERS, loadoutFor } from './game/weapons.js';
+import { makeBots } from './game/bot.js';
 import { getCar } from './game/carTypes.js';
 import { ITEMS } from './game/cosmetics.js';
 
@@ -50,6 +52,7 @@ let showcase = null;
 let hud, menu, garage, chat;
 let net;
 const remotes = new Map();          // playerId -> RemotePlayer
+let bots = [];                      // locally simulated AI drivers
 const colliderToPlayer = new Map(); // rapier collider handle -> playerId
 const sampleOut = makeSampleOut();
 let eventQueue;
@@ -58,6 +61,8 @@ let sessionStats = { wrecks: 0, trickScore: 0, bestCombo: 0 };
 let killerCandidate = null;
 let respawnTimer = 0;
 
+let weapons = null;               // projectiles, hazards and beams for everyone
+let arms = null;                  // the local car's ammo and cooldowns
 let recorder = null;              // records the local car during a trick run
 let replay = null;                // { player, visual, rec, returnTo }
 
@@ -107,6 +112,10 @@ async function boot() {
     );
     return hit ? hit.timeOfImpact : null;
   };
+  weapons = new WeaponSystem({
+    scene, world, fx,
+    onSelfHit: onWeaponHit,
+  });
   pickups = new Pickups(scene, arena.pickupPads);
   pickups.onCollect = onPickup;
 
@@ -252,6 +261,7 @@ function spawnLocalCar() {
   localDamage = new DamageModel(localVisual.shellMesh, type.body);
   scene.add(localVisual.group);
 
+  arms = new Armoury(type.id);
   localCar.onImpact = onLocalImpact;
   localCar.onDestroyed = onLocalDestroyed;
 
@@ -337,6 +347,29 @@ function makeNet() {
     const p = n.players.get(msg.id);
     chat.add(msg.name, msg.text, p?.slot ?? 0);
     if (msg.id !== n.id) Audio.ui('hover');
+  });
+
+  n.on('fire', (msg) => {
+    _wpos.set(msg.o[0], msg.o[1], msg.o[2]);
+    _wdir.set(msg.d[0], msg.d[1], msg.d[2]);
+    weapons.fire(msg.w, msg.id, _wpos, _wdir, false);
+    // hitscan is resolved by the victim: are we in the line of it?
+    const w = WEAPONS[msg.w];
+    if (localCar && localCar.alive && (w.kind === 'rapid' || w.kind === 'beam')) {
+      const t = localCar.position;
+      _wpos2.set(t.x - _wpos.x, t.y - _wpos.y, t.z - _wpos.z);
+      const along = _wpos2.dot(_wdir);
+      if (along > 0 && along < w.range) {
+        const perp = Math.sqrt(Math.max(0, _wpos2.lengthSq() - along * along));
+        if (perp < 2.0) onWeaponHit(w.damage, msg.id, _wdir.clone().negate());
+      }
+    }
+  });
+
+  n.on('deploy', (msg) => {
+    _wpos.set(msg.p[0], msg.p[1], msg.p[2]);
+    const owner = remotes.get(msg.id);
+    weapons.deploy(msg.c, msg.id, _wpos, _wdir.set(0, 0, 1), false, owner?.body);
   });
 
   n.on('gameEvent', onNetEvent);
@@ -428,12 +461,63 @@ function startSolo() {
   else startFreeRoam();
 }
 
+function clearBots() {
+  for (const b of bots) b.dispose();
+  bots = [];
+}
+
+function spawnBots(count, difficulty = 'normal') {
+  clearBots();
+  if (count <= 0) return;
+  bots = makeBots({
+    scene, world, count, spawns: arena.spawns, difficulty, takenSlots: [0],
+  });
+  for (const b of bots) {
+    b.onFire = (weaponId, origin, dir) => weapons.fire(weaponId, b.id, origin, dir, true);
+    b.onDeploy = (counterId, pos) => weapons.deploy(counterId, b.id, pos, null, true, b.body);
+    b.onWrecked = (killerId) => {
+      const p = b.position;
+      fx.explosion(new THREE.Vector3(p.x, p.y + 0.4, p.z));
+      Audio.explosion();
+      b.lives = Math.max(0, b.lives - 1);
+      const killer = killerId === myId() ? 'you' : null;
+      hud.feedItem(killer
+        ? `<b style="color:#46e08a">You</b> wrecked <b>${escapeHtml(b.name)}</b>`
+        : `<b>${escapeHtml(b.name)}</b> was wrecked`);
+      if (killer) { sessionStats.wrecks++; sessionStats.botKills = (sessionStats.botKills || 0) + 1; }
+      b.respawnAt = 3.2;
+    };
+  }
+}
+
 function startFreeRoam() {
+  const count = menu.botCount;
+  if (count > 0) { startBotDerby(count); return; }
   G.localMatch = { mode: menu.mode, phase: PHASE.LIVE, left: Infinity, solo: true, freeRoam: true };
   sessionStats = { wrecks: 0, trickScore: 0, bestCombo: 0 };
   recorder = null;
+  clearBots();
   beginPlaying();
   hud.announce('FREE ROAM', '#22e0ff');
+}
+
+/** Single-player Smash Derby against AI drivers. */
+function startBotDerby(count) {
+  const override = Number(new URLSearchParams(location.search).get('round'));
+  const duration = Number.isFinite(override) && override > 0 ? override : MODES.derby.duration;
+  G.localMatch = {
+    mode: 'derby', phase: PHASE.COUNTDOWN, left: 3, solo: true, bots: true, duration,
+  };
+  sessionStats = { wrecks: 0, trickScore: 0, bestCombo: 0, botKills: 0 };
+  recorder = null;
+  beginPlaying();
+  arena.resetProps();
+  pickups.reset();
+  fx.clearDebris();
+  weapons.clear();
+  spawnBots(count, menu.botDifficulty);
+  hud.announce('GET READY', '#ffd23f');
+  Audio.beep(false);
 }
 
 /** A timed solo Trick Battle, recorded so the best run can be watched back. */
@@ -474,8 +558,42 @@ function advanceLocalMatch(dt) {
   } else if (m.phase === PHASE.LIVE) {
     m.phase = PHASE.RESULTS;
     m.left = 0;
-    finishSoloTrickRun();
+    if (m.bots) finishBotDerby();
+    else finishSoloTrickRun();
   }
+}
+
+function finishBotDerby() {
+  const rows = [
+    { id: -1, name: Profile.get().name || 'YOU', slot: 0,
+      score: sessionStats.botKills * 100 + (localCar?.alive ? 60 : 0),
+      wrecks: sessionStats.botKills, alive: !!localCar?.alive },
+    ...bots.map((b) => ({
+      id: b.id, name: b.name, slot: b.slot,
+      score: b.wrecks * 100 + (b.alive ? 60 : 0), wrecks: b.wrecks, alive: b.alive,
+    })),
+  ].sort((a, b) => b.score - a.score);
+
+  const won = rows[0].id === -1;
+  const rewards = [{ label: 'Turned out', amount: 30 }];
+  if (sessionStats.botKills) rewards.push({ label: `Wrecked ${sessionStats.botKills}`, amount: sessionStats.botKills * 40 });
+  if (won) rewards.push({ label: 'Beat the bots', amount: 120 });
+
+  const total = rewards.reduce((n, r) => n + r.amount, 0);
+  const before = affordableSet();
+  Profile.addScrap(total);
+  Profile.recordRound({ won, wrecks: sessionStats.botKills, bestTrick: sessionStats.bestCombo });
+  const unlocked = [...affordableSet()].filter((k) => !before.has(k))
+    .slice(0, 4).map((k) => k.split('|')[1]);
+
+  menu.refreshScrap();
+  menu.showResults({
+    title: won ? 'YOU BEAT THE BOTS' : `${rows[0].name} WINS`,
+    board: rows, myId: -1, rewards, unlocked, scoreLabel: 'PTS',
+    canReplay: false,
+  });
+  clearBots();
+  endPlaying();
 }
 
 let lastRunRecording = null;
@@ -537,6 +655,7 @@ function onPhase(phase) {
     arena.resetProps();
     pickups.reset();
     fx.clearDebris();
+    weapons.clear();
     placeAtSpawn();
     hud.announce('GET READY', '#ffd23f');
     Audio.beep(false);
@@ -588,6 +707,8 @@ function resumeGame() {
 function quitToMenu() {
   G.localMatch = null;
   recorder = null;
+  clearBots();
+  weapons.clear();
   if (net.online) { net.disconnect(); clearRemotes(); }
   chat.setVisible(false);
   chat.close();
@@ -659,6 +780,49 @@ function showResults(payload) {
  */
 function trickScrap(score) {
   return Math.min(600, Math.round(score / 500));
+}
+
+/** Our own network id, or a stand-in when offline. */
+function myId() { return net.online ? net.id : -1; }
+
+/**
+ * Everything simulated on this machine that weapons can hit: us, plus any
+ * bots. Remote players are excluded on purpose — their client decides.
+ */
+function combatants() {
+  const list = [];
+  if (localCar) {
+    list.push({
+      id: myId(), position: localCar.position, alive: localCar.alive,
+      takeHit: (amount, src, dir) => onWeaponHit(amount, src, dir),
+    });
+  }
+  for (const b of bots) {
+    list.push({
+      id: b.id, position: b.position, alive: b.alive,
+      takeHit: (amount, src, dir) => b.takeHit(amount, src, dir),
+    });
+  }
+  return list;
+}
+
+/**
+ * Hitscan weapons resolve against remote cars on the shooter's machine only for
+ * effects; the victim still decides its own damage from the relayed event.
+ */
+function resolveLocalShot(a, origin, dir) {
+  if (a.w.kind !== 'rapid' && a.w.kind !== 'beam') return;
+  for (const r of remotes.values()) {
+    const t = r.body.translation();
+    _wpos2.set(t.x - origin.x, t.y - origin.y, t.z - origin.z);
+    const along = _wpos2.dot(dir);
+    if (along < 0 || along > a.w.range) continue;
+    const perp = Math.sqrt(Math.max(0, _wpos2.lengthSq() - along * along));
+    if (perp < 2.0) {
+      fx.sparks(new THREE.Vector3(t.x, t.y + 0.4, t.z), 8, 0.7, new THREE.Color(a.w.tracer));
+      break;
+    }
+  }
 }
 
 function affordableSet() {
@@ -838,6 +1002,24 @@ function onLocalImpact(magnitude, carId, localDir) {
   }
 }
 
+/** Something someone shot or dropped has hit us. */
+function onWeaponHit(amount, sourceId, worldDirToward) {
+  if (!localCar || !localCar.alive) return;
+  const p = localCar.position;
+  fx.impact(new THREE.Vector3(p.x, p.y + 0.4, p.z), clamp(amount / 45, 0.2, 1));
+  Audio.impact(clamp(amount / 45, 0.2, 1));
+  chase.addShake(clamp(amount / 40, 0.1, 1));
+
+  // dent it where the hit came from
+  _wrot.set(localCar.rotation.x, localCar.rotation.y, localCar.rotation.z, localCar.rotation.w).invert();
+  _wpos.copy(worldDirToward).applyQuaternion(_wrot).normalize();
+  localDamage.apply(clamp(amount / 55, 0, 1), _wpos);
+
+  const scale = currentMatch().mode === 'tricks' ? 0.3 : 1;
+  killerCandidate = sourceId ?? killerCandidate;
+  localCar.damage(amount * scale / localCar.phys.armor, killerCandidate);
+}
+
 function onLocalDestroyed(killerId) {
   const p = localCar.position;
   fx.explosion(new THREE.Vector3(p.x, p.y + 0.4, p.z));
@@ -954,6 +1136,7 @@ function updatePlaying(dt) {
   // no rolling start: the car is frozen until GO
   const frozen = match.phase === PHASE.COUNTDOWN || respawnTimer > 0 || !localCar?.alive;
   const intent = frozen ? NEUTRAL_INTENT : Input.sample();
+  G._lastIntent = { fire: intent.fire, firePress: intent.firePress, deploy: intent.deploy, frozen, phase: match.phase };
   if (intent.camera) chase.cycle();
 
   // remote cars chase their network pose once per frame
@@ -972,6 +1155,10 @@ function updatePlaying(dt) {
       localCar.preStep(TIMESTEP);
       localCar.step(TIMESTEP, intent);
     }
+    if (bots.length) {
+      const rivals = combatants();
+      for (const b of bots) b.step(TIMESTEP, rivals);
+    }
     world.step(eventQueue);
     drainContacts();
     if (localCar && tricks) {
@@ -982,6 +1169,71 @@ function updatePlaying(dt) {
     }
   }
   if (steps === 5) accumulator = 0;   // fell behind; drop the backlog
+
+  // ── weapons ──
+  if (arms && localCar && localCar.alive && !frozen) {
+    arms.update(dt);
+    const wantFire = arms.w.kind === 'rapid' || arms.w.kind === 'beam' ? intent.fire : intent.firePress;
+    if (wantFire && arms.canFire()) {
+      const { fwd, up, right } = localCar.axes();
+      const t = localCar.position;
+      _wpos.set(
+        t.x + fwd.x * localCar.bodyDef.l + up.x * 0.25,
+        t.y + fwd.y * localCar.bodyDef.l + up.y * 0.25,
+        t.z + fwd.z * localCar.bodyDef.l + up.z * 0.25
+      );
+      _wdir.copy(fwd);
+      if (arms.w.spread) {
+        _wdir.addScaledVector(right, (Math.random() - 0.5) * arms.w.spread * 2)
+             .addScaledVector(up, (Math.random() - 0.5) * arms.w.spread * 2).normalize();
+      }
+      arms.spendShot();
+      weapons.fire(arms.weaponId, myId(), _wpos, _wdir, true);
+      resolveLocalShot(arms, _wpos, _wdir);
+      Audio.weaponFire(arms.weaponId);
+      if (net.online) net.reportFire(arms.weaponId, _wpos, _wdir);
+      chase.addShake(arms.w.kind === 'rapid' ? 0.05 : 0.28);
+    }
+
+    if (intent.deploy && arms.canDeploy()) {
+      const { fwd } = localCar.axes();
+      const t = localCar.position;
+      _wpos.set(t.x - fwd.x * (localCar.bodyDef.l + 1.6), t.y, t.z - fwd.z * (localCar.bodyDef.l + 1.6));
+      arms.spendCharge();
+      weapons.deploy(arms.counterId, myId(), _wpos, fwd, true, localCar.body);
+      Audio.ui('buy');
+      hud.popup(arms.c.name, '#46e08a');
+      if (net.online) net.reportDeploy(arms.counterId, _wpos);
+    }
+  }
+
+  const cbs = combatants();
+  weapons.update(dt, cbs);
+  const slipping = weapons.checkHazards(cbs);
+  if (localCar && slipping.has(myId())) { localCar.slick = 0.6; localCar.slip = 1; }
+  for (const b of bots) if (slipping.has(b.id)) { b.vehicle.slick = 0.6; b.vehicle.slip = 1; }
+
+  // bots respawn and get back into it
+  for (const b of bots) {
+    b.render(dt, camera);
+    if (!b.alive) {
+      b.respawnAt -= dt;
+      if (b.respawnAt <= 0 && b.lives > 0) {
+        b.revive(arena.spawns[(b.slot + 2) % arena.spawns.length]);
+      }
+    }
+    const p = b.position;
+    if (p.y < ARENA.killY || Math.hypot(p.x, p.z) > ARENA.escapeRadius) {
+      b.vehicle.revive(arena.spawns[(b.slot + 2) % arena.spawns.length].pos,
+        arena.spawns[(b.slot + 2) % arena.spawns.length].yaw);
+    }
+  }
+
+  // last one rolling ends a bot derby early
+  if (match.bots && match.phase === PHASE.LIVE) {
+    const standing = (localCar?.alive ? 1 : 0) + bots.filter((b) => b.alive || b.lives > 0).length;
+    if (standing <= 1) { match.phase = PHASE.RESULTS; match.left = 0; finishBotDerby(); }
+  }
 
   // ── respawn ──
   if (localCar && !localCar.alive) {
@@ -1030,6 +1282,8 @@ function drainContacts() {
 }
 
 const _wpos = new THREE.Vector3();
+const _wpos2 = new THREE.Vector3();
+const _wdir = new THREE.Vector3();
 const _wrot = new THREE.Quaternion();
 
 function syncVisuals(dt) {
@@ -1090,7 +1344,9 @@ function syncVisuals(dt) {
 
 function updateHud(dt, match) {
   const cfg = MODES[match.mode] || MODES.derby;
-  hud.setMode(match.freeRoam ? 'FREE ROAM' : (match.solo ? 'SOLO TRICK RUN' : cfg.name));
+  hud.setMode(match.freeRoam ? 'FREE ROAM'
+    : match.bots ? `VS ${bots.length} BOTS`
+    : match.solo ? 'SOLO TRICK RUN' : cfg.name);
   if (match.freeRoam) { match.elapsed = (match.elapsed || 0) + dt; hud.setTimer(match.elapsed); }
   else hud.setTimer(match.left);
 
@@ -1099,6 +1355,7 @@ function updateHud(dt, match) {
     hud.setBoost((localCar.boost / localCar.phys.boostMax) * 100);
     hud.setSpeed(localCar.absSpeed * 3.6);
     hud.setFlipReady(localCar.airborne && localCar.flipReady);
+    hud.setArms(arms);
   }
 
   const me = net.online ? net.players.get(net.id) : null;
@@ -1109,6 +1366,13 @@ function updateHud(dt, match) {
       .map((p) => ({ id: p.id, name: p.name, slot: p.slot, score: p.score, alive: p.alive }))
       .sort((a, b) => b.score - a.score);
     hud.setScores(rows, net.id, cfg.scoreLabel);
+  } else if (bots.length) {
+    const rows = [
+      { id: -1, name: Profile.get().name || 'YOU', slot: 0,
+        score: (sessionStats.botKills || 0) * 100, alive: !!localCar?.alive },
+      ...bots.map((b) => ({ id: b.id, name: b.name, slot: b.slot, score: b.wrecks * 100, alive: b.alive })),
+    ].sort((a, b) => b.score - a.score);
+    hud.setScores(rows, -1, 'PTS');
   } else {
     hud.setScores([{ id: -1, name: Profile.get().name || 'YOU', slot: 0, score: sessionStats.trickScore, alive: true }], -1, 'SCORE');
   }
@@ -1118,11 +1382,14 @@ function updateHud(dt, match) {
     const { fwd } = localCar.axes();
     hud.drawRadar(
       { x: t.x, z: t.z, yaw: Math.atan2(fwd.x, fwd.z) },
-      [...remotes.values()].map((r) => {
-        const p = r.body.translation();
-        const info = net.players.get(r.id);
-        return { x: p.x, z: p.z, slot: info?.slot ?? 0, alive: r.alive };
-      }),
+      [
+        ...[...remotes.values()].map((r) => {
+          const p = r.body.translation();
+          const info = net.players.get(r.id);
+          return { x: p.x, z: p.z, slot: info?.slot ?? 0, alive: r.alive };
+        }),
+        ...bots.map((b) => ({ x: b.position.x, z: b.position.z, slot: b.slot, alive: b.alive })),
+      ],
       ARENA.wallTop
     );
   }
@@ -1150,6 +1417,11 @@ window.__wp = {
   replayTime: () => (replay ? replay.player.time : -1),
   replayPos: () => (replay ? [replay.player.position.x, replay.player.position.y, replay.player.position.z] : null),
   uiScale: () => ({ user: G.uiScale, auto: autoUiScale(), applied: getComputedStyle(document.documentElement).getPropertyValue('--u').trim(), vw: window.innerWidth, vh: window.innerHeight }),
+  bots: () => bots.map((b) => ({ name: b.name, alive: b.alive, health: b.vehicle.health, car: b.type.id })),
+  arms: () => (arms ? { weapon: arms.weaponId, ammo: arms.ammo, counter: arms.counterId, charges: arms.charges, cool: arms.cool, canFire: arms.canFire() } : null),
+  lastIntent: () => G._lastIntent || null,
+  projectiles: () => weapons.projectiles.length,
+  hazards: () => weapons.hazards.length,
   soloPhase: () => (G.localMatch ? G.localMatch.phase : null),
   soloLeft: () => (G.localMatch ? G.localMatch.left : -1),
   pendingTrick: () => (tricks ? tricks.pending : 0),
