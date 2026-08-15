@@ -603,3 +603,13 @@ kbd {
   color: var(--ink); background: transparent; border: none; outline: none;
 }
 #chat-input::placeholder { color: #5a6270; }
+
+.room-reach {
+  font-size: calc(11px * var(--u));
+  letter-spacing: .06em;
+  line-height: 1.45;
+  margin-bottom: calc(9px * var(--u));
+  text-transform: none;
+}
+.room-reach.ok { color: var(--green); }
+.room-reach.warn { color: var(--yellow); }

@@ -15,7 +15,8 @@
     "test:arena": "node tools/arenatest.mjs",
     "test:tricks": "node tools/tricktest.mjs",
     "spawns": "node tools/spawncheck.mjs",
-    "test:replay": "node tools/replaytest.mjs"
+    "test:replay": "node tools/replaytest.mjs",
+    "share": "node tools/share.mjs"
   },
   "dependencies": {
     "@dimforge/rapier3d-compat": "^0.20.0",

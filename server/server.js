@@ -262,6 +262,50 @@ function localAddresses() {
 }
 const LAN = localAddresses();
 
+/**
+ * The share link in the lobby is only useful if it points somewhere the other
+ * player can actually reach. Opening the game on localhost used to make it
+ * hand out a LAN address, which is useless to anyone outside the house.
+ *
+ * So work out a genuinely public URL from, in order:
+ *   1. PUBLIC_URL in the environment (cloudflared, a real host, anything)
+ *   2. ngrok's local API, if a tunnel is running
+ *   3. any non-private Host header we have actually been reached on
+ */
+let publicOrigin = process.env.PUBLIC_URL || null;
+
+const PRIVATE_HOST = /^(localhost|127\.|0\.0\.0\.0|\[?::1|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/i;
+
+async function probeNgrok() {
+  if (publicOrigin) return;
+  try {
+    const res = await fetch('http://127.0.0.1:4040/api/tunnels', { signal: AbortSignal.timeout(1500) });
+    if (!res.ok) return;
+    const data = await res.json();
+    const https = (data.tunnels || []).find((t) => t.proto === 'https');
+    if (https) {
+      publicOrigin = https.public_url;
+      console.log(`  public    ${publicOrigin}  (via ngrok - share this one)`);
+    }
+  } catch { /* no tunnel running, that is fine */ }
+}
+probeNgrok();
+setInterval(probeNgrok, 20000);
+
+// learn from any request that arrives on a non-private hostname
+app.use((req, _res, next) => {
+  if (!publicOrigin) {
+    const host = req.headers['x-forwarded-host'] || req.headers.host || '';
+    const name = host.split(':')[0];
+    if (name && !PRIVATE_HOST.test(name) && name.includes('.')) {
+      const proto = req.headers['x-forwarded-proto'] || 'http';
+      publicOrigin = `${proto}://${host}`;
+      console.log(`  public    ${publicOrigin}  (seen on an incoming request)`);
+    }
+  }
+  next();
+});
+
 // ───────────────────────────── sockets ─────────────────────────────
 wss.on('connection', (ws) => {
   let player = null;
@@ -315,6 +359,7 @@ wss.on('connection', (ws) => {
         room: code,
         lan: LAN,
         port: PORT,
+        publicOrigin,
         protocol: PROTOCOL_VERSION,
         host: room.hostId === player.id,
         players: [...room.players.values()].map(publicPlayer),

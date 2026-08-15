@@ -53,19 +53,33 @@ Up to **8 players** per room.
 
 ### Friends somewhere else
 
-Your home router blocks the outside world by default, so you need a tunnel.
-The easiest one needs no account:
-
 ```bash
-brew install cloudflared        # once
-cloudflared tunnel --url http://localhost:8080
+brew install cloudflared    # once, free, no account
+npm run share
 ```
 
-It prints a public `https://something.trycloudflare.com` URL. Send that to your
-mates — the room code works exactly the same. Keep `npm start` running in
-another terminal.
+That opens a public tunnel, starts the server already knowing its public
+address, and prints the link to send:
 
-`ngrok http 8080` works too if you already have it.
+```
+  ====================================================
+     SEND YOUR FRIENDS THIS LINK
+     https://something-random.trycloudflare.com
+  ====================================================
+```
+
+They click it and they're in — no wifi, no accounts, no install. The lobby
+share link and the room code both work. Keep the window open; `Ctrl+C` stops
+the game and closes the link.
+
+> **Don't use ngrok's free tier for this.** It puts a browser warning page
+> (`ERR_NGROK_6024`) in front of the game, so whoever you sent the link to just
+> sees a blank-looking page and assumes it's broken. Cloudflare has no such
+> page.
+
+The lobby always tells you how far your link reaches — "works for anyone,
+anywhere" or "same wifi only" — so you never send someone a link they can't
+open.
 
 ---
 
@@ -246,6 +260,11 @@ which is why the tuning numbers in `carTypes.js` can be trusted.
 **Mates can't connect on your wifi** — use the `same wifi` address the server
 prints, not `localhost`. If it still fails, macOS may be firewalling Node:
 System Settings → Network → Firewall → allow incoming connections for Node.
+
+**A friend elsewhere says it won't load** — check what the lobby says under the
+share link. If it says "same wifi only" they physically can't reach you; stop
+the server and use `npm run share` instead. If you used ngrok, they're most
+likely stuck on its warning page — use `npm run share` (Cloudflare) instead.
 
 **It's running slowly** — click **QUALITY** on the main menu to drop to medium
 or low. Low turns off shadows and bloom and halves the particle budget.

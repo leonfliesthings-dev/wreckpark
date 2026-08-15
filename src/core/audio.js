@@ -7,6 +7,7 @@ let ctx = null;
 let master = null;
 let ready = false;
 let muted = false;
+let volume = 0.55;
 
 // continuous voices for the local car
 let engine = null;
@@ -38,7 +39,7 @@ export const Audio = {
     if (!AC) return;
     ctx = new AC();
     master = ctx.createGain();
-    master.gain.value = 0.55;
+    master.gain.value = volume;
     master.connect(ctx.destination);
     noiseBuffer = makeNoiseBuffer();
     buildEngine();
@@ -54,8 +55,17 @@ export const Audio = {
 
   setMuted(v) {
     muted = v;
-    if (master) master.gain.value = v ? 0 : 0.55;
+    if (master) master.gain.value = v ? 0 : volume;
   },
+
+  /** 0 = off, 1 = full. */
+  setVolume(v) {
+    volume = Math.max(0, Math.min(1, v));
+    muted = volume === 0;
+    if (master) master.gain.value = volume;
+  },
+
+  get volume() { return volume; },
 
   /** Silences the continuous driving voices (menus, spectating, death). */
   silenceCar() {
@@ -75,15 +85,27 @@ export const Audio = {
     const t = ctx.currentTime;
 
     // --- engine ---
-    const base = s.electric ? 70 : 42;
-    const f = base + s.rpm * (s.electric ? 520 : 260);
-    engine.osc1.frequency.setTargetAtTime(f, t, 0.04);
-    engine.osc2.frequency.setTargetAtTime(f * 1.5, t, 0.04);
-    engine.osc3.frequency.setTargetAtTime(f * 0.5, t, 0.05);
-    engine.filter.frequency.setTargetAtTime(320 + s.rpm * 2600 + s.load * 900, t, 0.05);
-    engine.noiseGain.gain.setTargetAtTime(s.electric ? 0.006 : 0.03 + s.load * 0.05, t, 0.06);
-    const engVol = (s.airborne ? 0.16 : 0.22) + s.load * 0.14;
-    engine.gain.gain.setTargetAtTime(engVol, t, 0.06);
+    // A petrol engine is not a siren. Without a gearbox the note just climbs
+    // from idle to redline and sits there droning, which is what made this
+    // grating. Gears make it rise, drop, and rise again like an actual car.
+    const rev = s.electric ? this._evRev(s) : this._gearedRev(s);
+
+    const base = s.electric ? 90 : 46;
+    const span = s.electric ? 430 : 190;
+    const f = base + rev * span;
+
+    // slight detune between the two saws gives body instead of a flat buzz
+    engine.osc1.frequency.setTargetAtTime(f, t, 0.05);
+    engine.osc2.frequency.setTargetAtTime(f * 2.01, t, 0.05);
+    engine.osc3.frequency.setTargetAtTime(f * 0.5, t, 0.06);
+
+    // gentler, darker filter: the old resonant sweep was the harsh part
+    engine.filter.frequency.setTargetAtTime(360 + rev * 1500 + s.load * 520, t, 0.06);
+    engine.noiseGain.gain.setTargetAtTime(s.electric ? 0.004 : 0.014 + s.load * 0.03, t, 0.07);
+
+    // much quieter off-throttle, so cruising and coasting are restful
+    const engVol = (s.airborne ? 0.07 : 0.085) + s.load * 0.10;
+    engine.gain.gain.setTargetAtTime(engVol, t, 0.07);
 
     // --- wind ---
     const spd = Math.min(1, s.speed / 55);
@@ -96,6 +118,29 @@ export const Audio = {
 
     // --- boost roar ---
     boostV.gain.gain.setTargetAtTime(s.boosting ? 0.19 : 0, t, s.boosting ? 0.03 : 0.12);
+  },
+
+  /**
+   * Six-speed box. Each gear covers a slice of the speed range; within it the
+   * revs climb from just off idle to the limiter, then drop as it shifts up.
+   */
+  _gearedRev(s) {
+    const BANDS = [0.13, 0.27, 0.43, 0.61, 0.80, 1.01];
+    const frac = Math.min(1, Math.abs(s.speed) / 55);
+    let g = 0;
+    while (g < BANDS.length - 1 && frac > BANDS[g]) g++;
+    const lo = g === 0 ? 0 : BANDS[g - 1];
+    const within = (frac - lo) / Math.max(0.01, BANDS[g] - lo);
+    // idling revs pick up with the throttle even when stationary
+    const idle = 0.16 + s.load * 0.22;
+    const driving = 0.34 + 0.66 * Math.min(1, Math.max(0, within));
+    return frac < 0.02 ? idle : Math.max(idle, driving);
+  },
+
+  /** No gearbox on an EV — a single clean rise is the right sound. */
+  _evRev(s) {
+    const frac = Math.min(1, Math.abs(s.speed) / 60);
+    return 0.1 + frac * 0.9;
   },
 
   /** Metal-on-something impact. force 0..1 */
@@ -271,13 +316,15 @@ function buildEngine() {
   const filter = ctx.createBiquadFilter();
   filter.type = 'lowpass';
   filter.frequency.value = 700;
-  filter.Q.value = 3.2;
+  filter.Q.value = 0.9;      // was 3.2 - the resonance was doing the whining
 
+  // sawtooth + a quieter octave + a sine sub. The old square wave was the
+  // buzziest part of the mix.
   const osc1 = ctx.createOscillator(); osc1.type = 'sawtooth'; osc1.frequency.value = 60;
-  const osc2 = ctx.createOscillator(); osc2.type = 'square';   osc2.frequency.value = 90;
-  const osc3 = ctx.createOscillator(); osc3.type = 'sawtooth'; osc3.frequency.value = 30;
-  const g2 = ctx.createGain(); g2.gain.value = 0.25;
-  const g3 = ctx.createGain(); g3.gain.value = 0.5;
+  const osc2 = ctx.createOscillator(); osc2.type = 'sawtooth'; osc2.frequency.value = 120;
+  const osc3 = ctx.createOscillator(); osc3.type = 'sine';     osc3.frequency.value = 30;
+  const g2 = ctx.createGain(); g2.gain.value = 0.14;
+  const g3 = ctx.createGain(); g3.gain.value = 0.62;
 
   const noise = noiseSource();
   const noiseGain = ctx.createGain(); noiseGain.gain.value = 0.03;

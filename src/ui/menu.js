@@ -216,9 +216,21 @@ export class Menu {
   }
 
   // ── lobby ──────────────────────────────────────────────────
-  showLobby(room, url) {
+  showLobby(room, link) {
     $('room-code').textContent = room;
+    const { url, reach } = typeof link === 'string' ? { url: link, reach: 'anywhere' } : link;
     $('room-link').textContent = url;
+    const note = $('room-reach');
+    if (reach === 'anywhere') {
+      note.className = 'room-reach ok';
+      note.textContent = 'This link works for anyone, anywhere.';
+    } else if (reach === 'lan') {
+      note.className = 'room-reach warn';
+      note.textContent = 'Same wifi only. For friends elsewhere, run a tunnel (see the README) and reload this page on the public address.';
+    } else {
+      note.className = 'room-reach warn';
+      note.textContent = 'This machine only.';
+    }
     this.show('lobby');
   }
 

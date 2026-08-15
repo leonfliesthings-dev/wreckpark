@@ -354,17 +354,27 @@ function makeNet() {
 }
 
 /**
- * A link your mates can actually open. If you loaded the game on localhost,
- * "localhost" is useless to anyone else, so swap in the LAN address the server
- * reported. Anything else (a tunnel, a real host) is already shareable.
+ * A link the other player can actually open, and an honest label for how far it
+ * reaches. Order of preference:
+ *   1. a public URL the server knows about (tunnel or real host) - works anywhere
+ *   2. the page's own origin, if that is already public
+ *   3. this machine's LAN address - same wifi only
  */
 function shareLink(welcome) {
   const host = location.hostname;
   const isLocal = host === 'localhost' || host === '127.0.0.1' || host === '::1';
-  if (isLocal && welcome.lan?.length) {
-    return `http://${welcome.lan[0]}:${welcome.port}/?room=${welcome.room}`;
+  const isPrivate = isLocal || /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(host);
+
+  if (welcome.publicOrigin) {
+    return { url: `${welcome.publicOrigin}/?room=${welcome.room}`, reach: 'anywhere' };
   }
-  return `${location.origin}${location.pathname}?room=${welcome.room}`;
+  if (!isPrivate) {
+    return { url: `${location.origin}${location.pathname}?room=${welcome.room}`, reach: 'anywhere' };
+  }
+  if (welcome.lan?.length) {
+    return { url: `http://${welcome.lan[0]}:${welcome.port}/?room=${welcome.room}`, reach: 'lan' };
+  }
+  return { url: `${location.origin}${location.pathname}?room=${welcome.room}`, reach: 'local' };
 }
 
 function connect(code) {
