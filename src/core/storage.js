@@ -22,6 +22,7 @@ function blank() {
     uiScale: 1.0,   // multiplier on top of the automatic screen-size fit
     botCount: 3,
     botDifficulty: 'normal',
+    shake: true,
   };
 }
 
@@ -58,6 +59,7 @@ export const Profile = {
   setQuality(q) { profile.quality = q; save(); },
   setUiScale(v) { profile.uiScale = v; save(); },
   setBots(count, difficulty) { profile.botCount = count; profile.botDifficulty = difficulty; save(); },
+  setShake(v) { profile.shake = !!v; save(); },
 
   addScrap(n) {
     profile.scrap += n;

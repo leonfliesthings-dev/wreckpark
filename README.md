@@ -204,12 +204,22 @@ into canvases in code, so there is still not a single image file in the repo.
   around the rim with bad wiring
 - **Sodium street lamps** that pool orange onto the concrete — half atmosphere,
   half so you can see the ramp you are aiming at
-- **Cars** get brass pipework, rivets and exhaust cans, plus Tron edge strips
-  along the sills and roofline in your player colour
+- **Cars** are built panel by panel — wings, doors, bonnet, pillars, arches,
+  a proper glasshouse with a lit dashboard behind it — then welded into one
+  mesh so damage still crumples across panel joins. Each one is seeded, so it
+  arrives already dented, rusted, mismatched and hung with scrap: spare wheels,
+  jerry cans, roof racks, aerials, welded-on armour plate
+- **The weapon is on the car.** A gatling on the buggy's cage, rocket pods over
+  the muscle car's wings, a mortar tube out of the truck bed, an emitter array
+  on the EV's nose — plus the oil drum, caltrop hopper, winch or shield pylons
+  for whatever it carries defensively
+- Brass pipework, rivets and exhaust cans, plus Tron edge strips along the
+  sills and roofline in your player colour
 - A **colour grade** pass: cold shadows, warm highlights, vignette
 
 Drop **QUALITY** to medium or low if your machine struggles — low keeps the
-grade and the wet materials but drops bloom and rain.
+grade and the wet materials but drops bloom and rain. **SHAKE** turns camera
+shake off entirely.
 
 ---
 

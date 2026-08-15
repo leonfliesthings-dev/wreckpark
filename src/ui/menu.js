@@ -128,6 +128,7 @@ export class Menu {
       this.setMode(this.mode);
     });
     $('btn-uisize').addEventListener('click', () => { Audio.ui('click'); this.on.uiSize?.(); });
+    $('btn-shake').addEventListener('click', () => { Audio.ui('click'); this.on.shake?.(); });
 
     $('btn-ready').addEventListener('click', () => { Audio.ui('click'); this.on.ready?.(); });
     $('btn-leave').addEventListener('click', () => { Audio.ui('click'); this.on.leave?.(); });
@@ -208,6 +209,8 @@ export class Menu {
   setQualityLabel(q) {
     $('btn-quality').textContent = `QUALITY: ${q.toUpperCase()}`;
   }
+
+  setShakeLabel(on) { $('btn-shake').textContent = `SHAKE: ${on ? 'ON' : 'OFF'}`; }
 
   setUiScaleLabel(userScale, applied) {
     const pct = Math.round(userScale * 100);

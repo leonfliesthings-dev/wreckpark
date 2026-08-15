@@ -16,6 +16,7 @@ const _flat = new THREE.Vector3();
 const _up = new THREE.Vector3();
 const _quat = new THREE.Quaternion();
 const _ray = new THREE.Vector3();
+const _vel = new THREE.Vector3();
 
 export class ChaseCamera {
   constructor(camera) {
@@ -25,6 +26,8 @@ export class ChaseCamera {
     this.look = new THREE.Vector3();
     this.yaw = 0;
     this.shake = 0;
+    this.shakeT = 0;
+    this.reversing = false;
     this.baseFov = 68;
     this.fov = 68;
     /**
@@ -43,11 +46,14 @@ export class ChaseCamera {
   }
 
   addShake(amount) {
-    this.shake = Math.min(1.4, this.shake + amount);
+    if (amount < 0.08) return;         // ignore trivial knocks entirely
+    if (this.shake < 0.01) this.shakeT = 0;
+    this.shake = Math.min(1.2, this.shake + amount);
   }
 
   /** Drops the camera straight behind the car — used on spawn. */
   snapTo(car) {
+    this.reversing = false;
     this._compute(car, 1 / 60);
     this.camera.position.copy(_desired);
     this.pos.copy(_desired);
@@ -56,27 +62,40 @@ export class ChaseCamera {
   }
 
   _compute(car, dt) {
-    const t = car.position;
+    // Follow the interpolated transform when there is one, so the camera and
+    // the car agree about where the car is on every rendered frame.
+    const t = car.renderPos && car._hasPrev ? car.renderPos : car.position;
     _target.set(t.x, t.y + 0.6, t.z);
 
-    const r = car.rotation;
+    const r = car.renderRot && car._hasPrev ? car.renderRot : car.rotation;
     _fwd.set(0, 0, 1).applyQuaternion(_quat.set(r.x, r.y, r.z, r.w));
 
-    // Follow the direction of travel when moving, the nose when crawling. Using
-    // velocity alone makes the camera swing wildly during a spin.
     const v = car.velocity;
-    _flat.set(v.x, 0, v.z);
-    const speed = _flat.length();
-    if (speed > 4) _flat.multiplyScalar(1 / speed);
-    else { _flat.set(_fwd.x, 0, _fwd.z).normalize(); }
-    if (car.speed < -1) _flat.negate();       // reversing: look the way you are going
+    _vel.set(v.x, 0, v.z);
+    const speed = _vel.length();
 
-    // blend toward the car's own heading so a drift still shows where you point
-    _flat.x = _flat.x * 0.72 + _fwd.x * 0.28;
-    _flat.z = _flat.z * 0.72 + _fwd.z * 0.28;
-    _flat.y = 0;
+    // Reversing swings the camera round to the front so you can see where you
+    // are going. Sticky thresholds either side of zero, otherwise it flickers
+    // back and forth every time the speed crosses the line.
+    if (car.speed < -1.5) this.reversing = true;
+    else if (car.speed > 0.6) this.reversing = false;
+
+    // Start from the car's heading (flipped when reversing) rather than from
+    // velocity. Deriving it from velocity and then flipping it double-negates
+    // the moment you are travelling backwards at any pace, which snapped the
+    // camera back behind the car — and boost got you there almost instantly.
+    _flat.set(_fwd.x, 0, _fwd.z);
     if (_flat.lengthSq() < 1e-5) _flat.set(0, 0, 1);
     _flat.normalize();
+    if (this.reversing) _flat.negate();
+
+    // lean toward the actual direction of travel so drifts read
+    if (speed > 6) {
+      _vel.multiplyScalar(1 / speed);
+      _flat.lerp(_vel, 0.32);
+      if (_flat.lengthSq() < 1e-5) _flat.set(0, 0, 1);
+      _flat.normalize();
+    }
 
     const fast = clamp(speed / 55, 0, 1);
     let dist, height, lookAhead, lookUp;
@@ -128,12 +147,21 @@ export class ChaseCamera {
 
     this.camera.position.copy(this.pos);
 
-    if (this.shake > 0.001) {
-      const s = this.shake * 0.5;
-      this.camera.position.x += (Math.random() - 0.5) * s;
-      this.camera.position.y += (Math.random() - 0.5) * s;
-      this.camera.position.z += (Math.random() - 0.5) * s;
-      this.shake *= Math.exp(-6 * dt);
+    // Shake as a decaying oscillation, NOT per-frame randomness. Random offsets
+    // every frame are 60 Hz white noise: the world looks fine because the
+    // camera frames it, but the car appears to stutter in place. This was the
+    // whole of the "car judder" — measured at 1% of screen height per frame
+    // with random shake, and 0.000% without.
+    if (this.shake > 0.001 && !this.shakeDisabled) {
+      this.shakeT += dt;
+      const t = this.shakeT;
+      const s = this.shake * 0.15;
+      this.camera.position.x += Math.sin(t * 24.0) * Math.sin(t * 9.3) * s;
+      this.camera.position.y += Math.sin(t * 19.5 + 1.7) * Math.sin(t * 11.1) * s;
+      this.camera.position.z += Math.sin(t * 21.7 + 3.1) * Math.sin(t * 8.4) * s * 0.5;
+      this.shake *= Math.exp(-9 * dt);
+    } else {
+      this.shake = 0;
     }
 
     this.camera.lookAt(this.look);

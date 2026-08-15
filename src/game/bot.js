@@ -232,13 +232,14 @@ export class Bot {
   /** Visual sync + weapon firing, once per rendered frame. */
   render(dt, camera) {
     const v = this.vehicle;
-    const t = v.position, r = v.rotation;
+    const t = v._hasPrev ? v.renderPos : v.position;
+    const r = v._hasPrev ? v.renderRot : v.rotation;
     this.visual.group.position.set(t.x, t.y, t.z);
     this.visual.group.quaternion.set(r.x, r.y, r.z, r.w);
     for (let i = 0; i < 4; i++) {
       v.wheelLocalTransform(i, this.visual.wheels[i].position, this.visual.wheels[i].quaternion);
     }
-    this.damage.flush();
+    if (!window.__wpNoFlush) this.damage.flush();
 
     const it = this._lastIntent;
     if (!it || !this.alive) return;

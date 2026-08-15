@@ -149,6 +149,15 @@ export class Vehicle {
     this.resetCooldown = 0;
     this.stuckTime = 0;
 
+    // Render interpolation. Physics is a fixed 60 Hz but the screen is not, so
+    // the drawn transform is blended between the last two physics states.
+    // Without this the car visibly judders against a smooth world.
+    this.renderPos = new THREE.Vector3();
+    this.renderRot = new THREE.Quaternion();
+    this._prevPos = new THREE.Vector3();
+    this._prevRot = new THREE.Quaternion();
+    this._hasPrev = false;
+
     this.contactNormal = new THREE.Vector3(0, 1, 0);
     this._prevVel = new THREE.Vector3();
     this._vel = new THREE.Vector3();
@@ -165,6 +174,7 @@ export class Vehicle {
 
   // ── placement ────────────────────────────────────────────────
   resetTo(pos, yaw) {
+    this._hasPrev = false;      // do not interpolate across a teleport
     const q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), yaw);
     this.body.setTranslation({ x: pos[0], y: pos[1] + this.bodyDef.ride, z: pos[2] }, true);
     this.body.setRotation({ x: q.x, y: q.y, z: q.z, w: q.w }, true);
@@ -196,10 +206,35 @@ export class Vehicle {
     this.body.setRotation({ x: q.x, y: q.y, z: q.z, w: q.w }, true);
     this.body.setTranslation({ x: t.x, y: t.y + 1.1, z: t.z }, true);
     this.body.setAngvel({ x: 0, y: 0, z: 0 }, true);
+    this._hasPrev = false;      // self-righting is a jump, not a movement
     const v = this.body.linvel();
     this.body.setLinvel({ x: v.x * 0.3, y: 0, z: v.z * 0.3 }, true);
     this.resetCooldown = 1.6;
     this.stuckTime = 0;
+  }
+
+  /** Call immediately before each fixed physics step. */
+  savePrev() {
+    const t = this.body.translation();
+    const r = this.body.rotation();
+    this._prevPos.set(t.x, t.y, t.z);
+    this._prevRot.set(r.x, r.y, r.z, r.w);
+    this._hasPrev = true;
+  }
+
+  /**
+   * Blends between the last two physics states.
+   * @param {number} alpha leftover accumulator time / timestep, 0..1
+   */
+  interpolate(alpha) {
+    const t = this.body.translation();
+    const r = this.body.rotation();
+    this.renderPos.set(t.x, t.y, t.z);
+    this.renderRot.set(r.x, r.y, r.z, r.w);
+    if (this._hasPrev) {
+      this.renderPos.lerpVectors(this._prevPos, this.renderPos, alpha);
+      this.renderRot.slerpQuaternions(this._prevRot, this.renderRot, alpha);
+    }
   }
 
   // ── frame helpers ────────────────────────────────────────────

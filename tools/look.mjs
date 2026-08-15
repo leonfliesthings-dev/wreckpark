@@ -45,6 +45,22 @@ page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
 await page.goto(`http://localhost:${PORT}/`);
 await page.waitForFunction(() => document.getElementById('menu')?.classList.contains('active'), { timeout: 60000 });
 
+// The menu orbits the showcase car — hide the overlay and shoot each car in
+// turn, which is the only clean look at the bodywork.
+for (const car of ['ripsaw', 'hornet', 'mauler', 'volt']) {
+  await page.click(`.car-card[data-car="${car}"]`);
+  await page.waitForTimeout(700);
+  await page.evaluate(() => {
+    document.querySelectorAll('.screen').forEach((e) => e.classList.remove('active'));
+    window.__wp.carCam(6.2, 2.2, 0.85);
+  });
+  await page.waitForTimeout(900);
+  await page.screenshot({ path: join(OUT, `${TAG}-CAR-${car}.png`) });
+  await page.evaluate(() => { window.__wp.carCamOff(); document.getElementById('menu').classList.add('active'); });
+  await page.waitForTimeout(200);
+}
+await page.click('.car-card[data-car="ripsaw"]');
+
 // bots off, straight into free roam
 for (let i = 0; i < 6; i++) {
   const l = await page.textContent('#btn-bots');

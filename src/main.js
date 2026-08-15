@@ -85,6 +85,7 @@ async function boot() {
     carChanged: rebuildShowcase,
     modeChanged: (m) => { if (net?.online) net.setMode(m); },
     uiSize: cycleUiScale,
+    shake: toggleShake,
     watchBest: () => startReplay(BestRun.get(), 'menu'),
     watchRun: () => startReplay(lastRunRecording || BestRun.get(), 'results'),
   });
@@ -94,6 +95,10 @@ async function boot() {
 
   menu.boot(8, 'starting up');
   setupRenderer();
+  // after setupRenderer: `chase` does not exist before it
+  const shakeOn = Profile.get().shake ?? true;
+  chase.shakeDisabled = !shakeOn;
+  menu.setShakeLabel(shakeOn);
 
   menu.boot(22, 'loading physics');
   await initPhysics();
@@ -276,6 +281,13 @@ function cycleUiScale() {
   const i = UI_SCALES.findIndex((v) => Math.abs(v - G.uiScale) < 0.01);
   applyUiScale(UI_SCALES[(i + 1) % UI_SCALES.length]);
   Profile.setUiScale(G.uiScale);
+}
+
+function toggleShake() {
+  const on = !(Profile.get().shake ?? true);
+  Profile.setShake(on);
+  chase.shakeDisabled = !on;
+  menu.setShakeLabel(on);
 }
 
 function cycleQuality() {
@@ -1034,11 +1046,12 @@ function shedPart(worldPos) {
 
 function onLocalImpact(magnitude, carId, localDir) {
   if (!localCar) return;
+  if (G._jitterOn) G._impacts = (G._impacts || 0) + 1;
   const p = localCar.position;
 
   fx.impact(new THREE.Vector3(p.x, p.y, p.z), magnitude);
   Audio.impact(magnitude);
-  chase.addShake(magnitude * 0.9);
+  chase.addShake(magnitude * 0.45);
   localDamage.apply(magnitude, localDir);
 
   // hitting another car hurts more, and scales with how heavy they are
@@ -1157,12 +1170,42 @@ function frame(now) {
 
   if (composer) composer.render();
   else renderer.render(scene, camera);
+
+  if (G._jitterOn) sampleJitter(dt);
+}
+
+// ── perceived-smoothness instrumentation ──
+// What the player actually sees is the car's position relative to the CAMERA,
+// so that is what gets measured, in the render loop, after everything has moved.
+const _camSpace = new THREE.Vector3();
+let _lastCamSpace = null;
+function sampleJitter(dt) {
+  if (!localCar || !localVisual) return;
+  _camSpace.copy(localVisual.group.position).project(camera);
+  if (_lastCamSpace && dt > 0.0005) {
+    // per-frame screen displacement in NDC (1.0 = half the screen). Driving
+    // straight, the car should sit almost still in frame.
+    const d = Math.hypot(_camSpace.x - _lastCamSpace.x, _camSpace.y - _lastCamSpace.y);
+    G._jitter.push(d);
+    if (G._jitter.length > 400) G._jitter.shift();
+  }
+  _lastCamSpace = _camSpace.clone();
 }
 
 function updateMenu(dt) {
   const spawn = arena.spawns[0] || { pos: [0, 0, 60] };
   const centre = new THREE.Vector3(spawn.pos[0], spawn.pos[1] + 1.2, spawn.pos[2]);
-  chase.orbit(dt, centre, 13, 4.4, G.time);
+  if (G._carCam) {
+    const { radius, height, angle } = G._carCam;
+    camera.position.set(
+      centre.x + Math.cos(angle) * radius,
+      centre.y + height,
+      centre.z + Math.sin(angle) * radius
+    );
+    camera.lookAt(centre.x, centre.y - 0.15, centre.z);
+  } else {
+    chase.orbit(dt, centre, 13, 4.4, G.time);
+  }
   if (showcase) showcase.group.rotation.y += dt * 0.25;
   arena.update();
 
@@ -1215,12 +1258,13 @@ function updatePlaying(dt) {
     accumulator -= TIMESTEP;
     steps++;
     if (localCar) {
+      localCar.savePrev();
       localCar.preStep(TIMESTEP);
       localCar.step(TIMESTEP, intent);
     }
     if (bots.length) {
       const rivals = combatants();
-      for (const b of bots) b.step(TIMESTEP, rivals);
+      for (const b of bots) { b.vehicle.savePrev(); b.step(TIMESTEP, rivals); }
     }
     world.step(eventQueue);
     drainContacts();
@@ -1232,6 +1276,13 @@ function updatePlaying(dt) {
     }
   }
   if (steps === 5) accumulator = 0;   // fell behind; drop the backlog
+
+  // How far past the last physics step we are, 0..1. Everything drawn this
+  // frame is blended by this much toward the newest state.
+  const alpha = clamp(accumulator / TIMESTEP, 0, 1);
+  G._alpha = alpha; G._steps = steps; G._dt = dt;
+  if (localCar) localCar.interpolate(alpha);
+  for (const b of bots) b.vehicle.interpolate(alpha);
 
   // ── weapons ──
   if (arms && localCar && localCar.alive && !frozen) {
@@ -1351,14 +1402,15 @@ const _wrot = new THREE.Quaternion();
 
 function syncVisuals(dt) {
   if (localCar && localVisual) {
-    const t = localCar.position, r = localCar.rotation;
+    const t = localCar._hasPrev ? localCar.renderPos : localCar.position;
+    const r = localCar._hasPrev ? localCar.renderRot : localCar.rotation;
     localVisual.group.position.set(t.x, t.y, t.z);
     localVisual.group.quaternion.set(r.x, r.y, r.z, r.w);
     for (let i = 0; i < 4; i++) {
       const w = localVisual.wheels[i];
       localCar.wheelLocalTransform(i, w.position, w.quaternion);
     }
-    localDamage.flush();
+    if (!G._noFlush) localDamage.flush();
 
     // boost plume + tyre smoke
     if (localCar.boosting) {
@@ -1377,11 +1429,11 @@ function syncVisuals(dt) {
       }
     }
     const landing = localCar.takeLanding();
-    if (landing > 0.35) {
+    if (landing > 0.55) {          // was 0.35: every kerb was shaking the camera
       _wpos.set(t.x, t.y - localCar.bodyDef.ride, t.z);
       fx.dust(_wpos, Math.min(20, 4 + landing * 8));
       Audio.land(clamp(localCar.landImpact / 18, 0, 1));
-      chase.addShake(clamp(landing * 0.28, 0, 0.7));
+      chase.addShake(clamp((landing - 0.5) * 0.3, 0, 0.6));
     }
 
     Audio.updateCar({
@@ -1491,6 +1543,49 @@ window.__wp = {
     return true;
   },
   freeze: (v) => { G._frozenForShots = !!v; },
+  // close orbit on the showcase car, for judging bodywork detail
+  carCam: (radius = 4.6, height = 1.7, angle = 0.9) => {
+    if (!showcase) return false;
+    G._carCam = { radius, height, angle };
+    return true;
+  },
+  carCamOff: () => { G._carCam = null; },
+  // is the camera behind the car's nose (+1) or in front of it (-1)?
+  frameInfo: () => ({ alpha: G._alpha, steps: G._steps, dt: G._dt }),
+  perf: () => ({
+    calls: renderer.info.render.calls,
+    tris: renderer.info.render.triangles,
+    programs: renderer.info.programs?.length ?? 0,
+  }),
+  setDamageFlush: (v) => { G._noFlush = !v; window.__wpNoFlush = !v; },
+  jitterStart: (noShake) => {
+    G._jitter = []; _lastCamSpace = null; G._jitterOn = true;
+    G._impacts = 0;
+    chase.shakeDisabled = !!noShake;
+  },
+  jitterStats: () => {
+    G._jitterOn = false;
+    const a = G._jitter || [];
+    if (a.length < 10) return null;
+    const sorted = [...a].sort((x, y) => x - y);
+    const m = a.reduce((x, y) => x + y, 0) / a.length;
+    return {
+      n: a.length,
+      impacts: G._impacts || 0,
+      meanPct: m * 50,                              // % of screen height
+      p95Pct: sorted[Math.floor(a.length * 0.95)] * 50,
+      maxPct: sorted[a.length - 1] * 50,
+    };
+  },
+  renderPos: () => (localCar && localCar._hasPrev
+    ? [localCar.renderPos.x, localCar.renderPos.y, localCar.renderPos.z] : null),
+  camRelative: () => {
+    if (!localCar) return null;
+    const { fwd } = localCar.axes();
+    const t = localCar.position;
+    const dx = camera.position.x - t.x, dz = camera.position.z - t.z;
+    return { behind: Math.sign(-(dx * fwd.x + dz * fwd.z)), speed: localCar.speed };
+  },
   projectiles: () => weapons.projectiles.length,
   hazards: () => weapons.hazards.length,
   soloPhase: () => (G.localMatch ? G.localMatch.phase : null),

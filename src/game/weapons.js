@@ -139,11 +139,13 @@ export class WeaponSystem {
   }
 
   _spawnProjectile(weaponId, w, ownerId, origin, dir) {
+    this._projMats ||= {};
+    this._projMats[weaponId] ||= new THREE.MeshStandardMaterial({
+      color: w.tracer, emissive: w.tracer, emissiveIntensity: 1.6, roughness: 0.4,
+    });
     const mesh = new THREE.Mesh(
       w.kind === 'lobbed' ? this.geo.shell : this.geo.rocket,
-      new THREE.MeshStandardMaterial({
-        color: w.tracer, emissive: w.tracer, emissiveIntensity: 1.6, roughness: 0.4,
-      })
+      this._projMats[weaponId]
     );
     mesh.castShadow = true;
     this.scene.add(mesh);
@@ -182,15 +184,28 @@ export class WeaponSystem {
   }
 
   // ── hazards ──────────────────────────────────────────────────
+  /**
+   * Bots deploy countermeasures freely and caltrops are ten meshes a throw, so
+   * the world can silently fill up with hundreds of them over a long round.
+   * Retire the oldest once past the cap.
+   */
+  _trimHazards(max = 90) {
+    while (this.hazards.length > max) {
+      const h = this.hazards.shift();
+      this.scene.remove(h.mesh);
+    }
+  }
+
   deploy(counterId, ownerId, pos, dirBack, isLocal, chassisBody) {
     const c = COUNTERS[counterId];
     if (!c) return;
 
     if (c.kind === 'patch') {
-      const mesh = new THREE.Mesh(this.geo.slick, new THREE.MeshStandardMaterial({
+      this._slickMat ||= new THREE.MeshStandardMaterial({
         color: c.color, roughness: 0.15, metalness: 0.6,
         transparent: true, opacity: 0.85, depthWrite: false,
-      }));
+      });
+      const mesh = new THREE.Mesh(this.geo.slick, this._slickMat);
       mesh.rotation.x = -Math.PI / 2;
       mesh.scale.setScalar(c.radius);
       mesh.position.set(pos.x, pos.y + 0.06, pos.z);
@@ -198,10 +213,11 @@ export class WeaponSystem {
       this.hazards.push({ kind: 'oil', c, ownerId, mesh, pos: mesh.position.clone(), r: c.radius, life: c.life });
 
     } else if (c.kind === 'scatter') {
+      this._caltropMat ||= new THREE.MeshStandardMaterial({
+        color: c.color, roughness: 0.4, metalness: 0.8,
+      });
       for (let i = 0; i < c.count; i++) {
-        const mesh = new THREE.Mesh(this.geo.caltrop, new THREE.MeshStandardMaterial({
-          color: c.color, roughness: 0.4, metalness: 0.8,
-        }));
+        const mesh = new THREE.Mesh(this.geo.caltrop, this._caltropMat);
         const p = new THREE.Vector3(
           pos.x + rand(-3, 3), pos.y + 0.2, pos.z + rand(-3, 3)
         );
@@ -218,6 +234,7 @@ export class WeaponSystem {
     } else if (c.kind === 'shield') {
       this.shields.set(ownerId, { until: performance.now() / 1000 + c.life });
     }
+    this._trimHazards();
   }
 
   _spawnFlail(c, ownerId, pos, chassisBody) {
@@ -319,7 +336,6 @@ export class WeaponSystem {
       if (hit || p.life <= 0) {
         if (!hit) this._explode(p, null, list);
         this.scene.remove(p.mesh);
-        p.mesh.material.dispose();
         this.projectiles.splice(i, 1);
       }
     }
@@ -466,7 +482,7 @@ export class WeaponSystem {
   }
 
   clear() {
-    for (const p of this.projectiles) { this.scene.remove(p.mesh); p.mesh.material.dispose(); }
+    for (const p of this.projectiles) this.scene.remove(p.mesh);
     for (const h of this.hazards) this.scene.remove(h.mesh);
     for (const b of this.beams) { this.scene.remove(b.obj); b.obj.geometry.dispose(); b.obj.material.dispose(); }
     for (const id of [...this.flails.keys()]) this.removeFlail(id);
