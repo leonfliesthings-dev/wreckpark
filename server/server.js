@@ -196,7 +196,10 @@ function tickRoom(room) {
   switch (room.phase) {
     case PHASE.LOBBY: {
       const ps = [...room.players.values()];
-      if (ps.length > 0 && ps.every((p) => p.ready)) startRound(room);
+      // Needs two. A lone host readying up used to start the round instantly,
+      // so by the time their mate opened the link the game was already running
+      // and they were stranded in the lobby. Play alone with the SOLO buttons.
+      if (ps.length >= 2 && ps.every((p) => p.ready)) startRound(room);
       break;
     }
     case PHASE.COUNTDOWN:
@@ -213,13 +216,17 @@ function tickRoom(room) {
       }
       break;
     }
-    case PHASE.RESULTS:
+    case PHASE.RESULTS: {
+      // Readying up on the results screen goes again immediately rather than
+      // being silently ignored until the timer runs out.
+      const ps = [...room.players.values()];
+      if (ps.length >= 2 && ps.every((p) => p.ready)) { startRound(room); break; }
       if (remaining <= 0) {
-        for (const p of room.players.values()) p.ready = false;
         setPhase(room, PHASE.LOBBY, 0);
         broadcastScores(room);
       }
       break;
+    }
   }
 }
 

@@ -245,10 +245,22 @@ export class Menu {
 
     const cfg = MODES[mode] || MODES.derby;
     const me = players.get(myId);
-    $('lobby-mode').textContent = cfg.name + (phase === PHASE.COUNTDOWN
-      ? `  -  starting in ${Math.ceil(left)}` : '');
+    const alone = players.size < 2;
+    let suffix = '';
+    if (phase === PHASE.COUNTDOWN) suffix = `  -  starting in ${Math.ceil(left)}`;
+    else if (alone) suffix = '  -  waiting for someone to join';
+    else if (me?.ready) suffix = '  -  waiting for everyone to be ready';
+    $('lobby-mode').textContent = cfg.name + suffix;
+
     $('btn-ready').textContent = me?.ready ? 'NOT READY' : 'READY';
     $('btn-ready').classList.toggle('primary', !me?.ready);
+    // readying up alone would just leave you waiting; say so
+    $('btn-ready').disabled = alone && !me?.ready;
+    if (alone) {
+      this.lobbyMessage('Send the link above. The round starts once everyone here is ready.');
+    } else {
+      this.lobbyMessage('');
+    }
   }
 
   // ── results ────────────────────────────────────────────────

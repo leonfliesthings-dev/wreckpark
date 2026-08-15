@@ -299,6 +299,13 @@ function makeNet() {
     Input.setEnabled(true);      // so T opens chat while waiting in the lobby
     menu.lobbyMessage('');
     for (const p of msg.players) if (p.id !== n.id) addRemote(p);
+
+    // Turning up while a round is already running drops you straight in.
+    // The phase event only fires on a CHANGE, so without this a late joiner
+    // sits in the lobby for the rest of the match.
+    if (msg.phase === PHASE.COUNTDOWN || msg.phase === PHASE.LIVE) {
+      joinInProgress();
+    }
   });
 
   n.on('playerJoined', (p) => {
@@ -540,6 +547,18 @@ function onPhase(phase) {
     if (G.state === 'playing') endPlaying();
     menu.show('lobby');
   }
+}
+
+/** Drops a late arrival into a match that is already under way. */
+function joinInProgress() {
+  sessionStats = { wrecks: 0, trickScore: 0, bestCombo: 0 };
+  recorder = net.match.mode === 'tricks'
+    ? new ReplayRecorder({ car: menu.selectedCar, loadout: { ...Profile.loadout }, mode: 'tricks' })
+    : null;
+  beginPlaying();
+  placeAtSpawn();
+  hud.announce('JOIN IN PROGRESS', '#22e0ff');
+  chat.system('You joined a round already in progress.');
 }
 
 function beginPlaying() {

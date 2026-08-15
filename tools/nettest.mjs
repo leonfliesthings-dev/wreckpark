@@ -66,6 +66,20 @@ const bCount = await bob.evaluate(() => window.__wp.players());
 check('both clients see 2 players', aCount === 2 && bCount === 2, `alice=${aCount} bob=${bCount}`);
 await alice.screenshot({ path: join(SHOTS, '8-lobby.png') });
 
+// ── a lone host must not start without their mate ──
+console.log('\n── lobby gating ──');
+{
+  const solo = await makeClient('SOLO');
+  await solo.click('#btn-host');
+  await solo.waitForFunction(() => document.getElementById('lobby')?.classList.contains('active'), { timeout: 15000 });
+  await solo.waitForTimeout(900);
+  const disabled = await solo.evaluate(() => document.getElementById('btn-ready').disabled);
+  const phase = await solo.evaluate(() => window.__wp.phase());
+  check('a lone host cannot start the round', disabled && phase === 'lobby',
+    `readyDisabled=${disabled} phase=${phase}`);
+  await solo.close();
+}
+
 // ── ready up, round starts ──
 await alice.click('#btn-ready');
 await bob.click('#btn-ready');
@@ -159,6 +173,36 @@ check('scoreboard has both players', aScores.length === 2,
   aScores.map((s) => `${s.name}:${s.score}`).join(' '));
 check('lives are tracked and can be lost', aScores.every((s) => s.lives >= 0 && s.lives <= 3),
   aScores.map((s) => `${s.name}:${s.lives}`).join(' '));
+
+// ── turning up mid-round ──
+console.log('\n── joining a round already in progress ──');
+{
+  const late = await makeClient('LATE');
+  await late.fill('#join-code', room);
+  await late.click('#btn-join');
+  await late.waitForTimeout(4000);
+
+  const inGame = await late.evaluate(() => document.getElementById('hud').classList.contains('active'));
+  const stuckInLobby = await late.evaluate(() => document.getElementById('lobby').classList.contains('active'));
+  check('late joiner drops straight into the game', inGame && !stuckInLobby,
+    `hud=${inGame} lobby=${stuckInLobby}`);
+
+  const p0 = await late.evaluate(() => window.__wp.carPos());
+  check('late joiner gets a car', !!p0, p0 ? `spawned at (${p0[0].toFixed(0)}, ${p0[2].toFixed(0)})` : 'no car');
+
+  await late.keyboard.down('w');
+  await late.waitForTimeout(1800);
+  await late.keyboard.up('w');
+  const p1 = await late.evaluate(() => window.__wp.carPos());
+  const moved = p0 && p1 ? Math.hypot(p1[0] - p0[0], p1[2] - p0[2]) : 0;
+  check('late joiner can drive', moved > 8, `${moved.toFixed(0)} m`);
+
+  await alice.waitForTimeout(800);
+  const aliceSees = await alice.evaluate(() => window.__wp.remotes().length);
+  check('everyone already playing sees the newcomer', aliceSees === 2, `${aliceSees} remotes`);
+  await late.close();
+  await alice.waitForTimeout(1200);
+}
 
 // ── a client leaving is cleaned up ──
 await bob.close();
