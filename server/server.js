@@ -29,7 +29,15 @@ const app = express();
 const DIST = join(ROOT, 'dist');
 
 if (existsSync(DIST)) {
-  app.use(express.static(DIST, { maxAge: '1h', index: 'index.html' }));
+  // Asset filenames are content-hashed so they can cache hard, but index.html
+  // must never be cached or a rebuild will not reach an already-open tab.
+  app.use(express.static(DIST, {
+    index: 'index.html',
+    setHeaders(res, path) {
+      if (path.endsWith('index.html')) res.setHeader('Cache-Control', 'no-store');
+      else res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    },
+  }));
 } else {
   app.get('/', (_req, res) => {
     res.status(503).type('html').send(`
