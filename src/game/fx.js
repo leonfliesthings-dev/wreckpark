@@ -132,6 +132,7 @@ const SPARK = new THREE.Color(0xffb84d);
 const SMOKE = new THREE.Color(0x2c3038);
 const DUST = new THREE.Color(0x9a9182);
 const FIRE = new THREE.Color(0xff7a1f);
+const STEAM = new THREE.Color(0x8fa4b8);
 
 export class FX {
   constructor(scene, world, quality = 'high') {
@@ -226,6 +227,16 @@ export class FX {
       p.x + rand(-0.15, 0.15), p.y + 0.06, p.z + rand(-0.15, 0.15),
       rand(-0.9, 0.9), rand(0.5, 1.5), rand(-0.9, 0.9),
       { life: rand(0.5, 1.1), size0: 0.2, size1: 0.9, color: SMOKE, drag: 1.6, grav: 0.7 }
+    );
+  }
+
+  /** Slow, cold steam creeping out of a grate. */
+  steam(x, y, z) {
+    this.norm.spawn(
+      x, y, z,
+      rand(-0.35, 0.35), rand(1.4, 3.0), rand(-0.35, 0.35),
+      { life: rand(2.2, 4.0), size0: rand(0.5, 0.9), size1: rand(3.0, 5.0),
+        color: STEAM, drag: 0.5, grav: 0.8 }
     );
   }
 

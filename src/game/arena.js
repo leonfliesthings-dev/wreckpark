@@ -16,6 +16,7 @@ import {
 } from './geomKit.js';
 import { RAPIER, GROUPS, G, groups } from './physics.js';
 import { makeRng } from '../core/util.js';
+import { makePuddleTexture, makeGrimeTexture, makeHazardTexture } from './atmosphere.js';
 
 export const ARENA = {
   floorRadius: 105,
@@ -30,33 +31,49 @@ export const ARENA = {
 
 // ── materials ──────────────────────────────────────────────────
 function makeMaterials() {
+  // Wet tarmac: the puddle map drives roughness, so standing water mirrors the
+  // neon while the dry grit around it stays matt. Grime breaks up the concrete.
+  const puddles = makePuddleTexture();
+  const grime = makeGrimeTexture();
+  const hazardTex = makeHazardTexture();
+
   return {
     ground: new THREE.MeshStandardMaterial({
-      color: 0x72787f, roughness: 0.95, metalness: 0.02, side: THREE.DoubleSide,
+      color: 0x1e232e, roughness: 0.6, metalness: 0.6,
+      roughnessMap: puddles, envMapIntensity: 1.5,
+      side: THREE.DoubleSide,
     }),
     ramp: new THREE.MeshStandardMaterial({
-      color: 0x969ca6, roughness: 0.84, metalness: 0.04, side: THREE.DoubleSide,
+      color: 0x5c626d, roughness: 0.68, metalness: 0.34,
+      roughnessMap: grime, map: grime, envMapIntensity: 1.1,
+      side: THREE.DoubleSide,
     }),
     rampAlt: new THREE.MeshStandardMaterial({
-      color: 0x828892, roughness: 0.88, metalness: 0.04, side: THREE.DoubleSide,
+      color: 0x4c525c, roughness: 0.7, metalness: 0.36,
+      roughnessMap: grime, map: grime, envMapIntensity: 1.1,
+      side: THREE.DoubleSide,
     }),
+    // brass and copper: the steampunk layer under all the neon
     metal: new THREE.MeshStandardMaterial({
-      color: 0xa6adb8, roughness: 0.35, metalness: 0.85,
+      color: 0xb0803a, roughness: 0.34, metalness: 0.95, envMapIntensity: 1.6,
     }),
     paint: new THREE.MeshStandardMaterial({
-      color: 0xff6a1f, roughness: 0.5, metalness: 0.1,
-      emissive: 0xff6a1f, emissiveIntensity: 0.75,
+      color: 0xff6a1f, roughness: 0.45, metalness: 0.25,
+      emissive: 0xff5a10, emissiveIntensity: 0.42,
     }),
     neon: new THREE.MeshStandardMaterial({
-      color: 0x22e0ff, roughness: 0.4, metalness: 0.1,
-      emissive: 0x22e0ff, emissiveIntensity: 1.5,
+      color: 0x22e0ff, roughness: 0.35, metalness: 0.1,
+      emissive: 0x22e0ff, emissiveIntensity: 1.1,
     }),
     hazard: new THREE.MeshStandardMaterial({
-      color: 0xffd23f, roughness: 0.7, metalness: 0.15,
-      emissive: 0xffd23f, emissiveIntensity: 0.22,
+      color: 0xffffff, map: hazardTex, roughness: 0.66, metalness: 0.45,
+      emissive: 0x2a1e05, emissiveIntensity: 0.5, envMapIntensity: 0.8,
     }),
-    prop: new THREE.MeshStandardMaterial({ color: 0xb35c2a, roughness: 0.8, metalness: 0.2 }),
-    propAlt: new THREE.MeshStandardMaterial({ color: 0x6f7a86, roughness: 0.75, metalness: 0.35 }),
+    lamp: new THREE.MeshStandardMaterial({
+      color: 0xffc98a, emissive: 0xffb060, emissiveIntensity: 1.4, roughness: 0.4,
+    }),
+    prop: new THREE.MeshStandardMaterial({ color: 0x7d4a26, roughness: 0.72, metalness: 0.45, map: grime }),
+    propAlt: new THREE.MeshStandardMaterial({ color: 0x4d545e, roughness: 0.6, metalness: 0.6, map: grime }),
   };
 }
 
@@ -214,6 +231,18 @@ export function buildArena(scene, world, quality = 'high') {
 
   // ---------- ground shell ----------
   const ground = new THREE.LatheGeometry(groundProfile(), LATHE_SEGS);
+  // Re-map to planar world-space UVs. A lathe's own UVs wrap radially, which
+  // puts a visible starburst at the centre of the floor and pinches the
+  // puddle texture into a spiral.
+  {
+    const pos = ground.attributes.position;
+    const uv = new Float32Array(pos.count * 2);
+    for (let i = 0; i < pos.count; i++) {
+      uv[i * 2] = pos.getX(i) / 15;
+      uv[i * 2 + 1] = pos.getZ(i) / 15;
+    }
+    ground.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  }
   b.add('ground', ground);
 
   // Six big features sit on a 64 m ring at 60-degree spacing, with two smaller
@@ -388,6 +417,25 @@ export function buildArena(scene, world, quality = 'high') {
     b.decor('paint', cap);
   }
 
+  // ---------- street lights ----------
+  // Sodium lamps on poles. Half the reason they exist is readability: a wet
+  // night looks great right up until you cannot see the ramp you are aiming at.
+  const lampSpots = [];
+  for (let i = 0; i < 10; i++) {
+    const a = (i / 10) * Math.PI * 2 + 0.31;
+    const x = Math.cos(a) * 88, z = Math.sin(a) * 88;
+    const pole = new THREE.CylinderGeometry(0.35, 0.5, 15, 8);
+    place(pole, { pos: [x, 7.5, z] });
+    b.decor('metal', pole);
+    const arm = new THREE.BoxGeometry(3.2, 0.3, 0.3);
+    place(arm, { pos: [x - Math.cos(a) * 1.6, 14.7, z - Math.sin(a) * 1.6], rot: [0, -a, 0] });
+    b.decor('metal', arm);
+    const head = new THREE.BoxGeometry(1.5, 0.4, 0.9);
+    place(head, { pos: [x - Math.cos(a) * 3.1, 14.4, z - Math.sin(a) * 3.1], rot: [0, -a, 0] });
+    b.decor('lamp', head);
+    lampSpots.push([x - Math.cos(a) * 3.1, 14.2, z - Math.sin(a) * 3.1]);
+  }
+
   // ---------- perimeter neon ----------
   {
     const ring = new THREE.TorusGeometry(ARENA.wallTop, 0.35, 6, LATHE_SEGS);
@@ -463,6 +511,7 @@ export function buildArena(scene, world, quality = 'high') {
     props,
     spawns,
     pickupPads,
+    lampSpots,
     triangleCount: indices.length / 3,
 
     update() { props.update(); },
@@ -688,13 +737,17 @@ function buildProps(scene, world, MATS) {
 
 // ── sky, lights and fog ────────────────────────────────────────
 export function buildEnvironment(scene, renderer, quality = 'high') {
-  scene.background = new THREE.Color(0x1b2233);
-  scene.fog = new THREE.Fog(0x2b3348, 170, 540);
+  // Permanent wet night. Dense fog is doing a lot of the work here: it puts
+  // haze between everything so neon bleeds and the far side of the bowl reads
+  // as depth rather than clutter.
+  scene.background = new THREE.Color(0x070a12);
+  scene.fog = new THREE.FogExp2(0x101a30, 0.0048);
 
-  const hemi = new THREE.HemisphereLight(0xa8c8ff, 0x4a3a2c, 1.05);
+  const hemi = new THREE.HemisphereLight(0x5c86c8, 0x18202e, 1.25);
   scene.add(hemi);
 
-  const sun = new THREE.DirectionalLight(0xffe2b8, 3.1);
+  // "moonlight" — cold, low and weak; the neon is the real light source
+  const sun = new THREE.DirectionalLight(0xa8c6ff, 1.7);
   sun.position.set(-90, 130, 70);
   sun.castShadow = quality !== 'low';
   if (sun.castShadow) {
@@ -711,9 +764,9 @@ export function buildEnvironment(scene, renderer, quality = 'high') {
   scene.add(sun);
   scene.add(sun.target);
 
-  // cold rim light from the opposite side so cars read against the concrete
-  const rim = new THREE.DirectionalLight(0x6ba3ff, 1.0);
-  rim.position.set(80, 50, -110);
+  // warm sodium bounce from the far side, so cars keep a readable silhouette
+  const rim = new THREE.DirectionalLight(0xff9445, 0.6);
+  rim.position.set(80, 34, -110);
   scene.add(rim);
 
   // sky dome — cheap vertical gradient, no textures
@@ -722,9 +775,9 @@ export function buildEnvironment(scene, renderer, quality = 'high') {
     side: THREE.BackSide,
     depthWrite: false,
     uniforms: {
-      top: { value: new THREE.Color(0x16203c) },
-      mid: { value: new THREE.Color(0x4a4260) },
-      bot: { value: new THREE.Color(0xa8613c) },
+      top: { value: new THREE.Color(0x03050c) },
+      mid: { value: new THREE.Color(0x141a33) },
+      bot: { value: new THREE.Color(0x5a2440) },
     },
     vertexShader: `
       varying vec3 vP;
@@ -745,5 +798,35 @@ export function buildEnvironment(scene, renderer, quality = 'high') {
   sky.frustumCulled = false;
   scene.add(sky);
 
-  return { sun, hemi, rim, sky };
+  // An environment map so every wet surface has something to reflect. Built
+  // from the sky plus a ring of coloured emitters standing in for the neon.
+  let envRT = null;
+  if (renderer) {
+    const envScene = new THREE.Scene();
+    const dome = new THREE.Mesh(skyGeo.clone(), skyMat.clone());
+    envScene.add(dome);
+    const NEON = [0x22e0ff, 0x2a6cff, 0xff2d78, 0x22e0ff, 0x9b4bff, 0xffb020];
+    for (let i = 0; i < 10; i++) {
+      const a = (i / 10) * Math.PI * 2;
+      const panel = new THREE.Mesh(
+        new THREE.PlaneGeometry(90, 34),
+        new THREE.MeshBasicMaterial({ color: NEON[i % NEON.length], side: THREE.DoubleSide })
+      );
+      panel.position.set(Math.cos(a) * 300, 40 + (i % 3) * 30, Math.sin(a) * 300);
+      panel.lookAt(0, panel.position.y, 0);
+      envScene.add(panel);
+    }
+    try {
+      const pmrem = new THREE.PMREMGenerator(renderer);
+      pmrem.compileEquirectangularShader();
+      envRT = pmrem.fromScene(envScene, 0, 1, 2000);
+      scene.environment = envRT.texture;
+      pmrem.dispose();
+    } catch (err) {
+      console.warn('[wreckpark] no environment map; wet surfaces will look flat', err);
+    }
+    dome.geometry.dispose();
+  }
+
+  return { sun, hemi, rim, sky, envRT };
 }

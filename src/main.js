@@ -6,6 +6,7 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 
 import { initPhysics, createWorld, RAPIER, TIMESTEP, groups, G as CG } from './game/physics.js';
 import { buildArena, buildEnvironment, ARENA } from './game/arena.js';
@@ -20,6 +21,7 @@ import { RemotePlayer } from './game/remotePlayer.js';
 import { ReplayRecorder, ReplayPlayer } from './game/replay.js';
 import { WeaponSystem, Armoury, WEAPONS, COUNTERS, loadoutFor } from './game/weapons.js';
 import { makeBots } from './game/bot.js';
+import { Rain, buildSignage, buildVents } from './game/atmosphere.js';
 import { getCar } from './game/carTypes.js';
 import { ITEMS } from './game/cosmetics.js';
 
@@ -47,6 +49,7 @@ const G = {
 
 let renderer, scene, camera, composer, chase;
 let world, arena, fx, pickups, env;
+let rain = null, signage = null, vents = null;
 let localCar = null, localVisual = null, localDamage = null, tricks = null;
 let showcase = null;
 let hud, menu, garage, chat;
@@ -101,6 +104,15 @@ async function boot() {
   arena = buildArena(scene, world, G.quality);
   env = buildEnvironment(scene, renderer, G.quality);
 
+  menu.boot(62, 'switching the neon on');
+  signage = buildSignage(scene);
+  for (const [x, y, z] of arena.lampSpots || []) {
+    const l = new THREE.PointLight(0xffa64d, 130, 48, 2);
+    l.position.set(x, y, z);
+    scene.add(l);
+  }
+  if (G.quality !== 'low') rain = new Rain(scene, { count: G.quality === 'high' ? 4200 : 2000 });
+
   menu.boot(70, 'scattering junk');
   fx = new FX(scene, world, G.quality);
   // let the chase camera avoid clipping through the park
@@ -118,6 +130,10 @@ async function boot() {
   });
   pickups = new Pickups(scene, arena.pickupPads);
   pickups.onCollect = onPickup;
+  vents = buildVents(fx, [
+    [22, 0.2, 40], [-26, 0.2, -34], [58, 0.2, -30], [-58, 0.2, 44],
+    [8, 0.2, -70], [-70, 0.2, -8], [40, 0.2, 62], [0, -3.6, 18],
+  ]);
 
   menu.boot(86, 'building your car');
   hud = new HUD();
@@ -167,17 +183,60 @@ function setupRenderer() {
   window.addEventListener('keydown', kick, { once: true });
 }
 
+/**
+ * Colour grade: cold in the shadows, warm in the highlights, vignetted and
+ * very slightly desaturated. This is what pulls the whole thing from "bright
+ * toy" toward wet-street sci-fi.
+ */
+const GradeShader = {
+  uniforms: {
+    tDiffuse: { value: null },
+    uLift: { value: new THREE.Color(0x0e2033) },
+    uGain: { value: new THREE.Color(0xffe6cc) },
+    uSat: { value: 1.12 },
+    uVignette: { value: 0.5 },
+    uContrast: { value: 1.1 },
+  },
+  vertexShader: `
+    varying vec2 vUv;
+    void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+  fragmentShader: `
+    uniform sampler2D tDiffuse;
+    uniform vec3 uLift, uGain;
+    uniform float uSat, uVignette, uContrast;
+    varying vec2 vUv;
+    void main() {
+      vec4 c = texture2D(tDiffuse, vUv);
+      // lift shadows cold, tint highlights warm
+      float l = dot(c.rgb, vec3(0.299, 0.587, 0.114));
+      c.rgb += uLift * (1.0 - l) * 0.85;
+      c.rgb *= mix(vec3(1.0), uGain, l * 0.8);
+      // contrast about mid grey
+      c.rgb = (c.rgb - 0.5) * uContrast + 0.5;
+      // saturation
+      c.rgb = mix(vec3(dot(c.rgb, vec3(0.299, 0.587, 0.114))), c.rgb, uSat);
+      // vignette
+      vec2 d = vUv - 0.5;
+      c.rgb *= 1.0 - uVignette * dot(d, d) * 1.6;
+      gl_FragColor = vec4(max(c.rgb, 0.0), c.a);
+    }`,
+};
+
 function buildComposer() {
   composer = null;
-  if (G.quality === 'low') return;
   try {
     composer = new EffectComposer(renderer);
     composer.addPass(new RenderPass(scene, camera));
-    composer.addPass(new UnrealBloomPass(
-      new THREE.Vector2(window.innerWidth, window.innerHeight),
-      G.quality === 'high' ? 0.62 : 0.4, 0.7, 0.82
-    ));
+    // Bloom is the expensive pass, so it goes on low. The grade is nearly free
+    // and defines the whole look, so it stays on at every quality level.
+    if (G.quality !== 'low') {
+      composer.addPass(new UnrealBloomPass(
+        new THREE.Vector2(window.innerWidth, window.innerHeight),
+        G.quality === 'high' ? 0.55 : 0.4, 0.8, 0.60
+      ));
+    }
     composer.addPass(new OutputPass());
+    composer.addPass(new ShaderPass(GradeShader));
   } catch (err) {
     // Bloom is a nice-to-have; never let it stop the game from running.
     console.warn('[wreckpark] post-processing unavailable, falling back to direct render', err);
@@ -227,6 +286,7 @@ function cycleQuality() {
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, G.quality === 'high' ? 2 : 1.4));
   renderer.shadowMap.enabled = G.quality !== 'low';
   if (env?.sun) env.sun.castShadow = G.quality !== 'low';
+  if (rain) rain.setIntensity(G.quality === 'low' ? 0 : 1);
   buildComposer();
 }
 
@@ -1090,6 +1150,9 @@ function frame(now) {
   else updateMenu(dt);
 
   fx.update(dt);
+  if (rain) rain.update(dt, camera);
+  if (signage) signage.update(G.time);
+  if (vents) vents.update(dt);
   Input.endFrame();
 
   if (composer) composer.render();
@@ -1134,7 +1197,7 @@ function updatePlaying(dt) {
   if (menu.current === 'pause') return;
 
   // no rolling start: the car is frozen until GO
-  const frozen = match.phase === PHASE.COUNTDOWN || respawnTimer > 0 || !localCar?.alive;
+  const frozen = G._frozenForShots || match.phase === PHASE.COUNTDOWN || respawnTimer > 0 || !localCar?.alive;
   const intent = frozen ? NEUTRAL_INTENT : Input.sample();
   G._lastIntent = { fire: intent.fire, firePress: intent.firePress, deploy: intent.deploy, frozen, phase: match.phase };
   if (intent.camera) chase.cycle();
@@ -1420,6 +1483,14 @@ window.__wp = {
   bots: () => bots.map((b) => ({ name: b.name, alive: b.alive, health: b.vehicle.health, car: b.type.id })),
   arms: () => (arms ? { weapon: arms.weaponId, ammo: arms.ammo, counter: arms.counterId, charges: arms.charges, cool: arms.cool, canFire: arms.canFire() } : null),
   lastIntent: () => G._lastIntent || null,
+  // put the car somewhere specific so look-development screenshots line up
+  pose: (x, y, z, yaw) => {
+    if (!localCar) return false;
+    localCar.resetTo([x, y, z], yaw);
+    chase.snapTo(localCar);
+    return true;
+  },
+  freeze: (v) => { G._frozenForShots = !!v; },
   projectiles: () => weapons.projectiles.length,
   hazards: () => weapons.hazards.length,
   soloPhase: () => (G.localMatch ? G.localMatch.phase : null),

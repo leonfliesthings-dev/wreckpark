@@ -317,6 +317,7 @@ export function buildCar(type, loadout, teamColor = null) {
   // Bots and previews pass nothing; fall back to the stock kit.
   loadout = { ...DEFAULT_LOADOUT, ...(loadout || {}) };
   const bd = type.body;
+  const cab = bd.cabin;
   const group = new THREE.Group();
 
   const paintItem = getItem('paint', loadout.paint);
@@ -341,8 +342,11 @@ export function buildCar(type, loadout, teamColor = null) {
 
   const shellMat = new THREE.MeshStandardMaterial({
     vertexColors: true,
-    roughness: finish.rough ?? 0.3,
-    metalness: finish.metal ?? 0.3,
+    // a bit rougher and more metallic than spec: wet, used, and it catches the
+    // neon instead of sitting flat
+    roughness: Math.min(1, (finish.rough ?? 0.3) + 0.12),
+    metalness: Math.min(1, (finish.metal ?? 0.3) + 0.22),
+    envMapIntensity: 1.35,
     emissive: finish.emissive ? new THREE.Color(paintHex) : 0x000000,
     emissiveIntensity: finish.emissive ?? 0,
     flatShading: false,
@@ -369,7 +373,10 @@ export function buildCar(type, loadout, teamColor = null) {
   }
 
   // ── bolt-ons ──
-  const trimMat = new THREE.MeshStandardMaterial({ color: 0x2b3038, roughness: 0.45, metalness: 0.75 });
+  // Brass rather than grey plastic: the steampunk layer under the neon.
+  const trimMat = new THREE.MeshStandardMaterial({
+    color: 0x8a6428, roughness: 0.38, metalness: 0.95, envMapIntensity: 1.4,
+  });
   const glowMat = new THREE.MeshStandardMaterial({
     color: 0x22e0ff, emissive: 0x22e0ff, emissiveIntensity: 2.2, roughness: 0.3,
   });
@@ -396,6 +403,59 @@ export function buildCar(type, loadout, teamColor = null) {
     group.add(underglow);
   }
 
+  // ── Tron edge lighting ──
+  // Thin light strips along the sills and around the tail. They read as the
+  // hard neon edge of the aesthetic and double as player identification.
+  const edgeColor = teamColor !== null ? teamColor : paintHex;
+  const edgeMat = new THREE.MeshBasicMaterial({ color: edgeColor });
+  const edges = new THREE.Group();
+  {
+    const sill = new THREE.BoxGeometry(0.05, 0.05, bd.l * 1.55);
+    for (const sx of [-1, 1]) {
+      const m = new THREE.Mesh(sill, edgeMat);
+      m.position.set(sx * (bd.w + 0.02), -bd.h * 0.55, 0);
+      edges.add(m);
+    }
+    const tail = new THREE.Mesh(new THREE.BoxGeometry(bd.w * 1.75, 0.05, 0.05), edgeMat);
+    tail.position.set(0, bd.h * 0.55, -bd.l - 0.02);
+    edges.add(tail);
+    const nose = new THREE.Mesh(new THREE.BoxGeometry(bd.w * 1.5, 0.05, 0.05), edgeMat);
+    nose.position.set(0, -bd.h * 0.3, bd.l + 0.02);
+    edges.add(nose);
+    // roofline
+    const roof = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.05, cab.l * 1.8), edgeMat);
+    roof.position.set(0, cab.y + cab.h + 0.02, cab.z);
+    edges.add(roof);
+  }
+  group.add(edges);
+
+  // ── steampunk pipework ──
+  {
+    const pipe = new THREE.CylinderGeometry(0.075, 0.075, bd.l * 1.25, 8);
+    for (const sx of [-1, 1]) {
+      const m = new THREE.Mesh(pipe, trimMat);
+      m.rotation.x = Math.PI / 2;
+      m.position.set(sx * (bd.w + 0.09), -bd.h * 0.1, -bd.l * 0.1);
+      m.castShadow = true;
+      group.add(m);
+    }
+    // rivet band across the bonnet
+    const rivet = new THREE.SphereGeometry(0.045, 6, 5);
+    for (let i = -3; i <= 3; i++) {
+      const m = new THREE.Mesh(rivet, trimMat);
+      m.position.set(i * (bd.w * 0.26), bd.h + 0.02, bd.l * 0.55);
+      group.add(m);
+    }
+    // exhaust cans out the back
+    const can = new THREE.CylinderGeometry(0.11, 0.13, 0.34, 10);
+    for (const sx of [-1, 1]) {
+      const m = new THREE.Mesh(can, trimMat);
+      m.rotation.x = Math.PI / 2;
+      m.position.set(sx * bd.w * 0.5, -bd.h * 0.5, -bd.l - 0.14);
+      group.add(m);
+    }
+  }
+
   // ── wheels ──
   const wheelWidth = bd.exposedWheels ? type.phys.wheelRadius * 0.75 : type.phys.wheelRadius * 0.58;
   const wheels = [];
@@ -412,7 +472,8 @@ export function buildCar(type, loadout, teamColor = null) {
     accessories,
     underglow,
     paintHex,
-    materials: { shellMat, trimMat, headMat, tailMat, glowMat },
+    edges,
+    materials: { shellMat, trimMat, headMat, tailMat, glowMat, edgeMat },
 
     dispose() {
       group.traverse((o) => {

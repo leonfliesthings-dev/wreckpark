@@ -189,6 +189,30 @@ Want shorter runs? Add `?round=60` to the URL for one-minute runs.
 
 ---
 
+## The look
+
+Permanent wet night: Blade Runner's rain and haze, Tron's hard neon edges, and
+a steampunk layer of brass and pipework under all of it. Everything is
+generated at boot — the puddle, grime and hazard-stripe textures are painted
+into canvases in code, so there is still not a single image file in the repo.
+
+- **Wet tarmac** — a puddle map drives roughness, so standing water mirrors the
+  neon while the dry grit stays matt
+- **Reflections** — an environment map built from the sky and a ring of
+  coloured emitters, so every wet surface has something to catch
+- **Rain**, drifting **steam** from grates, and flickering **neon hoardings**
+  around the rim with bad wiring
+- **Sodium street lamps** that pool orange onto the concrete — half atmosphere,
+  half so you can see the ramp you are aiming at
+- **Cars** get brass pipework, rivets and exhaust cans, plus Tron edge strips
+  along the sills and roofline in your player colour
+- A **colour grade** pass: cold shadows, warm highlights, vignette
+
+Drop **QUALITY** to medium or low if your machine struggles — low keeps the
+grade and the wet materials but drops bloom and rain.
+
+---
+
 ## The park
 
 One giant bowl, 210 m across, with a 20 m banked quarter-pipe running all the
@@ -317,6 +341,10 @@ Car handling all lives in `src/game/carTypes.js` — mass, engine force, grip,
 suspension, air control, armour, boost. Change a number, run `npm run test:sim`,
 and you'll see immediately what it did to acceleration, ride height and the
 loop.
+
+Look development has its own harness: `node tools/look.mjs <tag>` parks the car
+at seven fixed vantage points and screenshots each one into `shots/look/`, so
+successive art passes can be compared like for like.
 
 Park layout is in `src/game/arena.js`. Move a feature and `npm run test:arena`
 will tell you if it now overlaps something else; `npm run spawns` re-checks that
